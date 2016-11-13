@@ -15,7 +15,7 @@ import Control.Monad ( replicateM, forM_ )
 import Control.Monad.State
 
 main = do
-  (Satisfied, Just ms) <- solveWith minisat $ do
+  (stats, (Satisfied, Just ms)) <- solveWithStats minisat $ do
     [ Restricted a, Restricted b ]
         :: [ Restricted 5 (NBV 3) ] <- replicateM 2 unknown
     -- assert $ gt (a^2 * b^2) (b^3 * a^3)
@@ -23,6 +23,7 @@ main = do
     assert $ gt (a2 * b2) (b2 * b * a * a2)
     return [a,b]
   forM_ ms print
+  print stats
 
 unknown_monotone = do
    m <- unknown ; assert $ monotone m ; return m
