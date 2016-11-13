@@ -179,7 +179,8 @@ library
     temporary            >= 1.1      && < 1.3,
     transformers         >= 0.3      && < 0.6,
     unordered-containers == 0.2.*,
-    attoparsec
+    attoparsec,
+    time
 
   if impl(ghc >= 7.4 && < 7.6)
     build-depends: ghc-prim
@@ -197,6 +198,7 @@ library
     Ersatz.Problem
     Ersatz.Solution
     Ersatz.Solver
+    Ersatz.Solver.Stats
     Ersatz.Solver.DepQBF
     Ersatz.Solver.Minisat
     Ersatz.Variable

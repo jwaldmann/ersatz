@@ -23,6 +23,7 @@ import Data.IntMap (IntMap)
 import Ersatz.Problem
 import Ersatz.Solution
 import Ersatz.Solver.Common
+import Ersatz.Solver.Stats
 import qualified Data.IntMap.Strict as IntMap
 import System.IO
 import System.Process (readProcessWithExitCode)
@@ -44,15 +45,20 @@ cryptominisat = minisatPath "cryptominisat"
 minisatPath :: MonadIO m => FilePath -> Solver SAT m
 minisatPath path problem = liftIO $
   withTempFiles ".cnf" "" $ \problemPath solutionPath -> do
-    withFile problemPath WriteMode $ \fh ->
+    (t_writing, ()) <- timed $ withFile problemPath WriteMode $ \fh ->
       hPutBuilder fh (dimacs problem)
 
-    (exit, _out, _err) <-
-      readProcessWithExitCode path [problemPath, solutionPath] []
+    (t_solving,(exit, _out, _err)) <-
+      timed $ readProcessWithExitCode path [problemPath, solutionPath] []
 
-    sol <- parseSolutionFile solutionPath
+    (t_parsing, sol) <- timed $ parseSolutionFile solutionPath
 
-    return (resultOf exit, sol)
+    let stats = Stats { writing = t_writing, solving = t_solving, parsing = t_parsing
+                      , variables = dimacsNumVariables problem
+                      , clauses = dimacsNumClauses problem
+                      }
+
+    return (stats, (resultOf exit, sol))
 
 parseSolutionFile :: FilePath -> IO (IntMap Bool)
 parseSolutionFile path = handle handler (parseSolution <$> B.readFile path)

@@ -206,6 +206,8 @@ class DIMACS t where
   dimacsComments :: t -> [ByteString]
   dimacsNumVariables :: t -> Int
   dimacsClauses :: t -> Seq IntSet
+  dimacsNumClauses :: t -> Int
+  dimacsNumClauses t = Seq.length $ dimacsClauses t
 
 -- | QDIMACS file format pretty printer
 --
@@ -217,6 +219,8 @@ class QDIMACS t where
   qdimacsNumVariables :: t -> Int
   qdimacsQuantified :: t -> [Quant]
   qdimacsClauses :: t -> Seq IntSet
+  qdimacsNumClauses :: t -> Int
+  qdimacsNumClauses t = Seq.length $ qdimacsClauses t
 
 -- | WDIMACS file format pretty printer
 --

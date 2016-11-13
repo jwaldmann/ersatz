@@ -28,6 +28,7 @@ import Data.Ix
 import Data.Typeable
 import Ersatz.Internal.Literal
 import Ersatz.Problem
+import Ersatz.Solver.Stats
 import System.Mem.StableName (StableName)
 
 data Solution = Solution
@@ -72,4 +73,4 @@ instance Bounded Result where
 -- * @s@ is typically 'SAT' or 'QSAT'
 --
 -- * @m@ is typically 'IO'
-type Solver s m = s -> m (Result, IntMap Bool)
+type Solver s m = s -> m (Stats, (Result, IntMap Bool))
