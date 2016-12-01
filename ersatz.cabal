@@ -188,7 +188,9 @@ library
     transformers         >= 0.3      && < 0.6,
     unordered-containers == 0.2.*,
     attoparsec,
-    time
+    time,
+    text,
+    process-extras       
 
   if impl(ghc >= 7.4 && < 7.6)
     build-depends: ghc-prim
@@ -196,6 +198,7 @@ library
   exposed-modules:
     Ersatz
     Ersatz.Bit
+    Ersatz.Bit.Display
     Ersatz.Bits
     Ersatz.BitChar
     Ersatz.Codec
