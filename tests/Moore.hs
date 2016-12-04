@@ -21,6 +21,8 @@ import Ersatz
 import Ersatz.Bit
 import qualified Ersatz.Relation as R
 
+import qualified Ersatz.Internal.Formula.Display as F
+
 import qualified Data.Array as A
 import System.Environment (getArgs)
 import Control.Monad ( void, when, forM )
