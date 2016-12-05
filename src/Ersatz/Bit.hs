@@ -22,6 +22,7 @@
 module Ersatz.Bit
   ( Bit(..)
   , assert
+  , runBit
   , Boolean(..)
   ) where
 
