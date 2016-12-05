@@ -22,6 +22,7 @@
 module Ersatz.Bit
   ( Bit(..)
   , assert
+  , assertClause
   , runBit
   , Boolean(..)
   ) where
@@ -171,6 +172,10 @@ assert (Not (And bs)) | False = do
 assert b = do
   l <- runBit b
   assertFormula (formulaLiteral l)
+
+assertClause bs = do
+  ls <- Traversable.for bs runBit
+  assertFormula $ fromClause $ foldMap fromLiteral ls 
 
 -- | Convert a 'Bit' to a 'Literal'.
 runBit :: (MonadState s m, HasSAT s) => Bit -> m Literal
