@@ -269,6 +269,15 @@ executable ersatz-sudoku
   ghc-options: -Wall
   hs-source-dirs: examples/sudoku
 
+executable ersatz-dominatingset
+   if flag(examples)
+     build-depends: base, ersatz, mtl
+   else
+     buildable: False
+   default-language: Haskell2010
+   main-is: DominatingSet.hs
+   hs-source-dirs: examples
+
 -- test-suite properties
 --   type: exitcode-stdio-1.0
 --   ghc-options: -Wall
