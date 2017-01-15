@@ -166,6 +166,9 @@ instance Codec Bit where
 assert :: (MonadState s m, HasSAT s) => Bit -> m ()
 assert (And bs) = Foldable.for_ bs assert
 -- the following (when switched on, False => True) produces extra clauses, why?
+-- probably because of this:
+-- if the sub-expresion (And bs) is shared,
+-- we traverse it several times.
 assert (Not (And bs)) | False = do
   ls <- Traversable.for bs runBit
   assertFormula $ fromClause $ foldMap (fromLiteral . negateLiteral) ls
