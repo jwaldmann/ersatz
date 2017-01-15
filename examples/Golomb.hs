@@ -1,3 +1,7 @@
+-- | see also
+-- http://www.research.ibm.com/people/s/shearer/grtab.html
+-- http://cube20.org/golomb/
+
 {-# language LambdaCase #-}
 {-# language ScopedTypeVariables #-}
 
@@ -8,6 +12,7 @@ import Control.Monad
 import Data.Monoid
 import Data.List (foldl', transpose)
 import System.Environment
+import Data.Time
 
 main :: IO ()
 main = getArgs >>= \ case
@@ -31,8 +36,9 @@ run_unary (n ::Int) mbound = do
       solveWith minisat $ do
         let bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
-        assert $ encode (fromIntegral n) === sumBits bs
+        -- assert $ encode (fromIntegral n) === sumBits bs
         -- assert $ exactly n bs
+	assert $ atleast n bs
         forM_ [1 .. bound] $ \ dist -> do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } ; guard $ q <= bound
@@ -44,7 +50,9 @@ run_unary (n ::Int) mbound = do
   case status of
     Satisfied -> do 
       let xs = do (x,True) <- zip [0..] bs ; return x
-      print xs ; return $ Just xs
+      print xs
+      getCurrentTime >>= print 
+      return $ Just xs
     _ -> return Nothing
 
 assert_atmost_one_squared xs = do
