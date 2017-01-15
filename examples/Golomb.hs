@@ -36,15 +36,18 @@ run_unary (n ::Int) mbound = do
       solveWith minisat $ do
         let bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
-        -- assert $ encode (fromIntegral n) === sumBits bs
+        assert $ encode (fromIntegral n) === sumBits bs
         -- assert $ exactly n bs
-	assert $ atleast n bs
-        forM_ [1 .. bound] $ \ dist -> do
+	-- assert $ atleast n bs
+        assert $ Bits bs <? Bits (reverse bs)
+        forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
-                p <- [ 0..bound] ; let { q = p + dist } ; guard $ q <= bound
+                p <- [ 0..bound] ; let { q = p + dist } 
+                guard $ q <= bound
                 return $ and [bs !! p, bs !! q ]
-          assert_atmost_one_squared ds
+          -- assert_atmost_one_squared ds
           -- assert_atmost_one_binary ds
+          assert_atmost_one_project ds
           -- assert $ atmost_one ds
         return bs
   case status of
@@ -68,6 +71,19 @@ assert_atmost_one_squared xs = do
            return leader
          go leaders
       go xs = assert_atmost_one_binary xs
+  go xs
+
+assert_atmost_one_project xs = do
+  let blocks k [] = []
+      blocks k xs = 
+        let (here, there) = splitAt k xs
+        in  here : blocks k there
+  let go xs | length xs >= 4 = do
+         let w = round $ sqrt $ fromIntegral $ length xs
+             m = blocks w xs
+         go $ map or m 
+         go $ map or $ transpose m
+      go xs = assert_atmost_one_unary xs
   go xs
 
 assert_atmost_one_unary xs = do
