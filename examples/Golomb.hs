@@ -13,6 +13,9 @@ import Data.Monoid
 import Data.List (foldl', transpose)
 import System.Environment
 import Data.Time
+import Data.Bits (testBit)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 
 main :: IO ()
 main = getArgs >>= \ case
@@ -47,7 +50,8 @@ run_unary (n ::Int) mbound = do
                 return $ and [bs !! p, bs !! q ]
           -- assert_atmost_one_squared ds
           -- assert_atmost_one_binary ds
-          assert_atmost_one_project ds
+          -- assert_atmost_one_project ds
+	  assert_atmost_one_logpro ds
           -- assert $ atmost_one ds
         return bs
   case status of
@@ -72,6 +76,16 @@ assert_atmost_one_squared xs = do
          go leaders
       go xs = assert_atmost_one_binary xs
   go xs
+
+assert_atmost_one_logpro xs = do
+  let go pos = do
+         let m = M.fromListWith (||) $ do
+	       (k,x) <- zip [0 :: Int ..] xs
+	       return (testBit k pos, x)
+	 assert $ not $ and m
+  if length xs > 4
+    then forM_ [ 0 .. truncate $ logBase 2 $ fromIntegral $ (length xs - 1) ] go
+    else assert_atmost_one_unary xs
 
 assert_atmost_one_project xs = do
   let blocks k [] = []
