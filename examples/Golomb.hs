@@ -12,6 +12,7 @@ import Control.Monad
 import Data.Monoid
 import Data.List (foldl', transpose)
 import System.Environment
+import System.IO
 import Data.Time
 import Data.Bits (testBit)
 import qualified Data.Map.Strict as M
@@ -39,10 +40,12 @@ run_unary (n ::Int) mbound = do
       solveWith minisat $ do
         let bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
+        -- assert_exactly (n-1) $ tail bs
         assert $ encode (fromIntegral n) === sumBits bs
+        -- assert_exactly n bs
         -- assert $ exactly n bs
 	-- assert $ atleast n bs
-        assert $ Bits bs <? Bits (reverse bs)
+        -- assert $ Bits bs <? Bits (reverse bs)
         forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } 
@@ -58,9 +61,17 @@ run_unary (n ::Int) mbound = do
     Satisfied -> do 
       let xs = do (x,True) <- zip [0..] bs ; return x
       print xs
-      getCurrentTime >>= print 
+      getCurrentTime >>= print  ; hFlush stdout
       return $ Just xs
     _ -> return Nothing
+
+assert_exactly n xs = do
+  let w = length xs
+      b = succ $ truncate $ logBase 2 $ fromIntegral $ w - 1
+  ms <- replicateM n ( Bits <$> replicateM b exists )
+  assert $ and $ zipWith (<?) ms $ tail ms ++ [ encode $ fromIntegral w ]
+  forM_ (zip [0 :: Integer ..] xs) $ \ (k, x) -> do
+    assert $ x === any (encode k ===) ms
 
 assert_atmost_one_squared xs = do
   let blocks k [] = []
@@ -82,8 +93,8 @@ assert_atmost_one_logpro xs = do
          let m = M.fromListWith (||) $ do
 	       (k,x) <- zip [0 :: Int ..] xs
 	       return (testBit k pos, x)
-	 assert $ not $ and m
-  if length xs > 4
+	 assert $ not $ and $ M.elems m
+  if length xs >= 4
     then forM_ [ 0 .. truncate $ logBase 2 $ fromIntegral $ (length xs - 1) ] go
     else assert_atmost_one_unary xs
 
