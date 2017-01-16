@@ -271,7 +271,7 @@ executable ersatz-dominatingset
 
 executable ersatz-golomb
    if flag(examples)
-     build-depends: base, ersatz, mtl, containers, time
+     build-depends: base, ersatz, mtl, containers, time, async
    else
      buildable: False
    default-language: Haskell2010

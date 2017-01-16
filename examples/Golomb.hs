@@ -10,53 +10,69 @@ import qualified Prelude as P
 import Ersatz
 import Control.Monad
 import Data.Monoid
-import Data.List (foldl', transpose)
+import Data.List (foldl', transpose, tails, cycle)
 import System.Environment
 import System.IO
 import Data.Time
 import Data.Bits (testBit)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import qualified Control.Concurrent.Async as A
+import Control.Exception (finally)
 
 main :: IO ()
 main = getArgs >>= \ case
-  [ n, b ] -> void $ run (read n) (Just $ read b)
-  [ n ] -> search $ read n
-  [] -> search 8
+  [ n, b ] -> void $ run_best configs (read n) (Just $ read b)
+  [ n ] -> search configs $ read n
+  [] -> search configs 8
 
-search n = do
-  let go bound = run n bound >>= \ case
+configs = Config 
+  <$> [ -- Binaries , 
+        SumBits 
+      ] 
+  <*> ( [ Squared, Project, LogPro] <*> [ 4, 8 ] )
+
+search confs n = do
+  let go bound = run_best confs n bound >>= \ case
         Nothing -> return ()
         Just xs -> go $ Just $ pred $ maximum xs
   go Nothing
 
-make w = Bits <$> replicateM w exists
+data Config = 
+     Config { exa :: EXA
+            , amo :: AMO 
+            } deriving Show
 
-run = run_unary
+waitAnyCatchCancelJust [] = return Nothing
+waitAnyCatchCancelJust as = do
+  (a, r) <- A.waitAnyCatch as
+  case r of
+    Right (Just x) -> return ( Just x ) `finally` mapM_ A.cancel as
+    _ -> waitAnyCatchCancelJust $ filter (/= a) as
 
-run_unary (n ::Int) mbound = do
-  print (n, mbound)
-  (status, msol@(Just bs)) <- 
-      solveWith minisat $ do
+firstJust :: [ IO (Maybe a) ] -> IO (Maybe a)
+firstJust actions = do
+  as <- forM actions A.async
+  waitAnyCatchCancelJust as
+
+run_best confs n mbound = 
+  firstJust $ map ( \ conf -> run conf n mbound ) confs
+  
+run conf (n ::Int) mbound = do
+  print (n, mbound, conf)
+  (stats,(status, msol@(Just bs))) <- 
+      solveWithStats minisat $ do
         let bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
-        -- assert_exactly (n-1) $ tail bs
-        assert $ encode (fromIntegral n) === sumBits bs
-        -- assert_exactly n bs
-        -- assert $ exactly n bs
-	-- assert $ atleast n bs
-        -- assert $ Bits bs <? Bits (reverse bs)
+        assert_exactly (exa conf) (n-1) $ tail bs
         forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } 
                 guard $ q <= bound
                 return $ and [bs !! p, bs !! q ]
-          -- assert_atmost_one_squared ds
-          -- assert_atmost_one_binary ds
-          -- assert_atmost_one_project ds
-	  assert_atmost_one_logpro ds
-          -- assert $ atmost_one ds
+          assert_atmost_one (amo conf) ds
         return bs
+  print (conf,stats)
   case status of
     Satisfied -> do 
       let xs = do (x,True) <- zip [0..] bs ; return x
@@ -65,7 +81,21 @@ run_unary (n ::Int) mbound = do
       return $ Just xs
     _ -> return Nothing
 
-assert_exactly n xs = do
+-- * exactly
+
+data EXA = Binaries 
+         | SumBits
+         | Chinese
+         | EXA_Plain
+  deriving Show
+
+assert_exactly exa n xs = case exa of
+  Binaries -> assert_exactly_binaries n xs
+  Chinese -> assert $ exactly_chinese n xs
+  SumBits -> assert $ encode (fromIntegral n) === sumBits xs
+  EXA_Plain -> assert $ exactly_plain n xs
+
+assert_exactly_binaries n xs = do
   let w = length xs
       b = succ $ truncate $ logBase 2 $ fromIntegral $ w - 1
   ms <- replicateM n ( Bits <$> replicateM b exists )
@@ -73,12 +103,81 @@ assert_exactly n xs = do
   forM_ (zip [0 :: Integer ..] xs) $ \ (k, x) -> do
     assert $ x === any (encode k ===) ms
 
-assert_atmost_one_squared xs = do
+data UF b = UF { contents :: [b] , over :: b }
+
+uf_unit x = UF { contents = [not x, x], over = false }
+
+uf_plus_cut cut a b = 
+  let res = M.toAscList $ M.fromListWith (||) $ do 
+         (p,x) <- zip [0..] $ contents a
+         (q,y) <- zip [0..] $ contents b
+         return (p + q, x && y)
+      (pre,post) = splitAt cut $ map snd res
+  in  UF { contents = pre
+         , over = over a || over b || or post
+         }
+
+exactly_plain n xs = 
+  let s = foldb (uf_plus_cut (n+1)) $ map uf_unit xs
+  in  not (over s) && (contents s !! n)
+
+atmost_plain n xs = 
+  let s = foldb (uf_plus_cut (n+1)) $ map uf_unit xs
+  in  not (over s) 
+
+exactly_chinese n xs = 
+  let good m = 
+        let unit x = not x : x : replicate (m-2) false
+            r = foldb plusmod $ map unit xs
+        in  r === encode_mod m n
+  in  all good $ take (mods n) primes
+
+primes = sieve [2..]
+sieve (x : ys) = x : sieve (filter (\y -> 0 /= mod y x) ys)
+
+mods n = length $ takeWhile (< n) $ scanl (*) 1 primes
+
+instance Equatable Bool where x === y = bool (x == y)
+
+encode_mod m n = 
+  map ( \ i -> bool $ mod n m == i ) [0..m-1]
+
+plusmod :: Boolean b => [b] -> [b] -> [b]
+plusmod xs ys =
+  let rot (y:ys) = ys ++ [y]
+  in  zipWith (\ _ q -> or $ zipWith (&&) xs q) xs 
+           (map reverse $ drop 1 $ iterate rot ys)
+
+foldb :: (a -> a -> a) -> [a] -> a
+foldb f [x] = x
+foldb f xs = 
+  let (lo,hi) = splitAt (div (length xs) 2) xs
+  in  f (foldb f lo) (foldb f hi)
+
+-- * at most one
+
+data AMO = Squared Int 
+         | Project Int
+         | LogPro  Int
+         | AMO_Unary
+         | AMO_Binary
+         | AMO_Plain
+  deriving (Show)
+
+assert_atmost_one alg xs = case alg of
+   Squared cut -> assert_atmost_one_squared cut xs
+   Project cut -> assert_atmost_one_project cut xs
+   LogPro cut -> assert_atmost_one_logpro cut xs
+   AMO_Unary -> assert_atmost_one_unary xs
+   AMO_Binary -> assert_atmost_one_binary xs
+   AMO_Plain -> assert $ atmost_plain 1 xs
+  
+assert_atmost_one_squared cut xs = do
   let blocks k [] = []
       blocks k xs = 
         let (here, there) = splitAt k xs
         in  here : blocks k there
-  let go xs | length xs > 4 = do
+  let go xs | length xs >= cut = do
          let w = round $ sqrt $ fromIntegral $ length xs
          leaders <- forM ( transpose $ blocks w xs ) $ \ block -> do
            leader <- exists
@@ -88,22 +187,22 @@ assert_atmost_one_squared xs = do
       go xs = assert_atmost_one_binary xs
   go xs
 
-assert_atmost_one_logpro xs = do
+assert_atmost_one_logpro cut xs = do
   let go pos = do
          let m = M.fromListWith (||) $ do
 	       (k,x) <- zip [0 :: Int ..] xs
 	       return (testBit k pos, x)
 	 assert $ not $ and $ M.elems m
-  if length xs >= 4
+  if length xs >= cut
     then forM_ [ 0 .. truncate $ logBase 2 $ fromIntegral $ (length xs - 1) ] go
     else assert_atmost_one_unary xs
 
-assert_atmost_one_project xs = do
+assert_atmost_one_project cut xs = do
   let blocks k [] = []
       blocks k xs = 
         let (here, there) = splitAt k xs
         in  here : blocks k there
-  let go xs | length xs >= 4 = do
+  let go xs | length xs >= cut = do
          let w = round $ sqrt $ fromIntegral $ length xs
              m = blocks w xs
          go $ map or m 
@@ -142,22 +241,6 @@ atmost_one xs =
       (zero,one) = go xs
   in  zero || one
 -}
-
-run_binary (n :: Int) mbound = do
-  print (n, mbound)
-  (status, msol@(Just xs)) <- 
-      solveWith minisat $ do
-        let w = truncate $ logBase 2 $ fromIntegral $ n^2
-        xs <- replicateM n $ make w
-        case mbound of
-          Nothing -> return ()
-          Just bound -> assert $ all (<=? encode bound) xs
-        assert $ and $ zipWith (<?) xs $ tail xs
-        assert $ alldifferent $ map ( \ [x,y] -> y - x ) $ subsequences 2 xs
-        return xs
-  case status of
-    Satisfied -> do print xs ; return $ Just xs
-    _ -> return Nothing
 
 subsequences :: Int -> [a] -> [[a]]
 subsequences 0 xs = [[]]
