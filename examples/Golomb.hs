@@ -8,17 +8,21 @@
 import Prelude hiding (and,or,all,any,not,(&&),(||))
 import qualified Prelude as P
 import Ersatz
+import Ersatz.Internal.Formula (formulaSet)
 import Control.Monad
 import Data.Monoid
-import Data.List (foldl', transpose, tails, cycle)
+import Data.List (foldl', transpose, tails, cycle, sortOn)
 import System.Environment
 import System.IO
 import Data.Time
 import Data.Bits (testBit)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
+import qualified Data.Sequence as Q
 import qualified Control.Concurrent.Async as A
 import Control.Exception (finally)
+import qualified GHC.Conc
+import Control.Lens ( (^.))
 
 main :: IO ()
 main = getArgs >>= \ case
@@ -27,11 +31,8 @@ main = getArgs >>= \ case
   [] -> search configs 8
 
 configs = Config 
-  <$> [ -- Binaries , 
-        SumBits  -- , Chinese
-      ] 
-  <*> ( [ Squared  , Project , LogPro
-        ] <*> [ 6, 12 ] ) 
+  <$> [ Binaries ,  SumBits  , Chinese ] 
+  <*> ( [ Squared  , Project , LogPro  ] <*> [ 4 , 6 .. 12 ] ) 
 
 search confs n = do
   let go bound = run_best confs n bound >>= \ case
@@ -41,8 +42,15 @@ search confs n = do
 
 data Config = 
      Config { exa :: EXA
-            , amo :: AMO 
+            , amo :: AMO
             } deriving Show
+
+data Args =
+    Args { _conf :: Config
+         , _n :: Int
+         , _mbound :: Maybe Int
+         }
+  deriving Show
 
 waitAnyCatchCancelJust [] = return Nothing
 waitAnyCatchCancelJust as = do
@@ -56,14 +64,37 @@ firstJust actions = do
   as <- forM actions A.async
   waitAnyCatchCancelJust as
 
-run_best confs n mbound = 
-  firstJust $ map ( \ conf -> run conf n mbound ) confs
+run_best confs n mbound = do
+  let args = sortOn fst $ do
+        conf <- confs
+        let arg = Args { _conf = conf, _n = n, _mbound = mbound } 
+        return (clauses $ constraint arg, arg)
+  numcaps <- GHC.Conc.getNumCapabilities
+  mapM_ print $ take (2*numcaps) args
+  firstJust $ map run $ take numcaps $ map snd args 
   
-run conf (n ::Int) mbound = do
-  print (n, mbound, conf)
+run arg = do
+  print arg
   (stats,(status, msol@(Just bs))) <- 
-      solveWithStats minisat $ do
-        let bound = maybe (n^2) id mbound
+      solveWithStats minisat $ constraint arg
+  print (arg,stats)
+  case status of
+    Satisfied -> do 
+      let xs = do (x,True) <- zip [0..] bs ; return x
+      print xs
+      getCurrentTime >>= print  ; hFlush stdout
+      return $ Just xs
+    _ -> return Nothing
+
+clauses con =
+  let (_,f) = runSAT' con
+  in  Q.length $ formulaSet ( f ^. formula )
+
+constraint arg = do
+        let conf = _conf arg
+            n = _n arg
+            mbound = _mbound arg
+            bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
         assert_exactly (exa conf) (n-1) $ tail bs
         forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
@@ -73,14 +104,6 @@ run conf (n ::Int) mbound = do
                 return $ and [bs !! p, bs !! q ]
           assert_atmost_one (amo conf) ds
         return bs
-  print (conf,stats)
-  case status of
-    Satisfied -> do 
-      let xs = do (x,True) <- zip [0..] bs ; return x
-      print xs
-      getCurrentTime >>= print  ; hFlush stdout
-      return $ Just xs
-    _ -> return Nothing
 
 -- * exactly
 
