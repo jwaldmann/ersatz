@@ -13,3 +13,6 @@ extra-package-dbs: []
 
 system-ghc: true
 compiler-check: newer-minor
+
+ghc-options:
+  "*" : "-rtsopts -threaded"
