@@ -31,14 +31,17 @@ main = getArgs >>= \ case
   [] -> search configs 8
 
 configs = Config 
-  <$> [ Binaries ,  SumBits  , Chinese ] 
-  <*> ( [ Squared  , Project , LogPro  ] <*> [ 4 , 6 .. 12 ] ) 
+  <$> [  SumBits  , 
+       Chinese ] 
+  <*> ( [ --  Squared  , 
+          Project , LogPro  ] 
+       <*> [  5, 6, 9, 12 ] ) 
 
 search confs n = do
   let go bound = run_best confs n bound >>= \ case
         Nothing -> return ()
         Just xs -> go $ Just $ pred $ maximum xs
-  go Nothing
+  go $ Just (n^2)
 
 data Config = 
      Config { exa :: EXA
@@ -65,12 +68,15 @@ firstJust actions = do
   waitAnyCatchCancelJust as
 
 run_best confs n mbound = do
+  putStrLn $ unwords [ "run_best for", show n, show mbound, "with", show (length confs), "configuration candidates" ]
   let args = sortOn fst $ do
         conf <- confs
         let arg = Args { _conf = conf, _n = n, _mbound = mbound } 
         return (clauses $ constraint arg, arg)
   numcaps <- GHC.Conc.getNumCapabilities
-  mapM_ print $ take (2*numcaps) args
+  putStrLn "formula sizes per config"
+  mapM_ print $ reverse $ zip [1..] $ take (2*numcaps) args
+  putStrLn "start actual computation for top half of previous list"
   firstJust $ map run $ take numcaps $ map snd args 
   
 run arg = do
