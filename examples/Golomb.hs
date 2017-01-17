@@ -28,9 +28,10 @@ main = getArgs >>= \ case
 
 configs = Config 
   <$> [ -- Binaries , 
-        SumBits 
+        SumBits  -- , Chinese
       ] 
-  <*> ( [ Squared, Project, LogPro] <*> [ 4, 8 ] )
+  <*> ( [ Squared  , Project , LogPro
+        ] <*> [ 6, 12 ] ) 
 
 search confs n = do
   let go bound = run_best confs n bound >>= \ case
@@ -184,7 +185,7 @@ assert_atmost_one_squared cut xs = do
            go $ not leader : block
            return leader
          go leaders
-      go xs = assert_atmost_one_binary xs
+      go xs = assert_atmost_one_unary xs
   go xs
 
 assert_atmost_one_logpro cut xs = do
