@@ -31,11 +31,13 @@ main = getArgs >>= \ case
   [] -> search configs 8
 
 configs = Config 
-  <$> [  SumBits  , 
-       Chinese ] 
-  <*> ( [ --  Squared  , 
-          Project , LogPro  ] 
-       <*> [  5, 6, 9, 12 ] ) 
+  <$> [ SumBits  
+     -- , Chinese
+       ] 
+  <*> ( [ AMO_Binary ]
+     --  ++ ( [ Project , LogPro  ]  <*> [ 7, 12 ] )
+     ++  (Based <$> [ 3, 5, 8 ] <*> [ 7, 12 ] )
+    )
 
 search confs n = do
   let go bound = run_best confs n bound >>= \ case
@@ -102,14 +104,44 @@ constraint arg = do
             mbound = _mbound arg
             bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
-        assert_exactly (exa conf) (n-1) $ tail bs
-        forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
+
+        -- blockchain n bs
+	-- blockchain n $ reverse bs
+
+        assert_exactly (exa conf) n bs
+	
+        when True $ forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } 
                 guard $ q <= bound
                 return $ and [bs !! p, bs !! q ]
           assert_atmost_one (amo conf) ds
+
+        when False $ forM_ [1 .. 2 * bound] $ \ s -> do
+	  let ss = do
+	        p <- [0 .. min s bound ] ; let q = s - p
+		guard $ p <= q P.&& q <= bound
+		return $ and [bs !! p, bs !! q ]
+          when (not $ null ss) $ assert_atmost_one (amo conf) ss
         return bs
+
+blockchain n bs = do
+  let go d prev bs =
+        if d < n
+	then do
+	  let (pre, post) = splitAt d bs
+	  let s = prev + sumBits pre
+	  assert $ s <=? encode (fromIntegral d)
+          go (d+1) s post
+	else do
+	  let s = prev + sumBits bs
+	  assert $ s === encode (fromIntegral n)
+	  return ()
+  go 1 (encode 0) bs
+
+-- * atmost
+
+atmost k xs = encode (fromIntegral k) >=? sumBits xs
 
 -- * exactly
 
@@ -189,6 +221,7 @@ foldb f xs =
 data AMO = Squared Int 
          | Project Int
          | LogPro  Int
+	 | Based Int Int
          | AMO_Unary
          | AMO_Binary
          | AMO_Plain
@@ -198,6 +231,7 @@ assert_atmost_one alg xs = case alg of
    Squared cut -> assert_atmost_one_squared cut xs
    Project cut -> assert_atmost_one_project cut xs
    LogPro cut -> assert_atmost_one_logpro cut xs
+   Based base cut -> assert_atmost_one_based base cut xs
    AMO_Unary -> assert_atmost_one_unary xs
    AMO_Binary -> assert_atmost_one_binary xs
    AMO_Plain -> assert $ atmost_plain 1 xs
@@ -239,6 +273,19 @@ assert_atmost_one_project cut xs = do
          go $ map or $ transpose m
       go xs = assert_atmost_one_unary xs
   go xs
+
+
+assert_atmost_one_based base cut xs = do
+  let testBit n 0 = mod n base
+      testBit n pos = testBit (div n base) (pos - 1)
+      go pos = do
+         let m = M.fromListWith (||) $ do
+	       (k,x) <- zip [0 :: Int ..] xs
+	       return (testBit k pos, x)
+	 assert_atmost_one_unary $ M.elems m
+  if length xs >= cut
+    then forM_ [ 0 .. truncate $ logBase (fromIntegral base) $ fromIntegral $ (length xs - 1) ] go
+    else assert_atmost_one_unary xs
 
 assert_atmost_one_unary xs = do
   forM_ (subsequences 2 xs) $ \ sub -> assert $ not $ and sub
