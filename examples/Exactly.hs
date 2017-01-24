@@ -1,7 +1,6 @@
 -- | various implementations of the "exactly-k" constraint
 -- (for arbitrary k)
 
-{-# OPTIONS_GHC -fno-warn-type-defaults #-}
 {-# language Rank2Types #-}
 
 module Exactly where
@@ -63,13 +62,16 @@ atmost_plain n xs =
 
 
 -- | FIXME: broken at the moment?
+-- exactly_chinese :: forall b. (Equatable b, Boolean b) => Int -> [b] -> Bit
 exactly_chinese :: forall b. (Equatable b, Boolean b) => Int -> [b] -> Bit
+exactly_chinese n [] = bool (n == 0)
 exactly_chinese n xs = 
   let good m = 
         let r = foldb plusmod $ map (unit m) xs
         in  r === encode_mod m n
-  in  all good $ take (mods n) primes
+  in  all good $ take (mods $ length xs) primes
 
+unit :: forall a. Boolean a => Int -> a -> [a]
 unit m x = not x : x : replicate (m-2) false
 
 primes :: [Int]
@@ -79,8 +81,6 @@ sieve (x : ys) = x : sieve (filter (\y -> 0 /= mod y x) ys)
 
 mods :: Int -> Int
 mods n = length $ takeWhile (<= n) $ scanl (*) 1 primes
-
-instance Equatable Bool where x === y = bool (x == y)
 
 encode_mod :: forall b a. (Boolean b, Integral a) => a -> a -> [b]
 encode_mod m n = 
@@ -93,6 +93,7 @@ plusmod xs ys =
            (map reverse $ drop 1 $ iterate rot ys)
 
 foldb :: (a -> a -> a) -> [a] -> a
+foldb f [] = error "foldb []"
 foldb f [x] = x
 foldb f xs = 
   let (lo,hi) = splitAt (div (length xs) 2) xs
