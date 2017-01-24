@@ -23,8 +23,8 @@ main = getArgs >>= \ case
   [ w, s ] -> void $ run methods (read w) (read s)
   [ w] -> search methods (read w)
 
-methods = -- Binaries :
-          -- SumBits :
+methods = Binaries :
+          SumBits :
           Chinese :
           -- Plain :
           []
@@ -54,7 +54,8 @@ single how w s = do
     case result of
       Satisfied -> do
         let xss = map (map fromEnum) b
-        mapM_ print xss
+            form = unwords . map (\ case 0 -> ". "; 1-> "K ") 
+        mapM_ (putStrLn . form) xss
         when (sum (concat xss) > s) $ error $ "what - " ++ show (sum $ concat xss)
         return $ Just xss
       _ -> return Nothing
