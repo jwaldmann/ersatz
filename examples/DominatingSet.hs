@@ -1,3 +1,6 @@
+-- | (minimal) dominating set on the knight's graph,
+-- cf. http://oeis.org/A006075
+
 {-# LANGUAGE FlexibleContexts #-}
 {-# language LambdaCase #-}
 {-# language NoMonomorphismRestriction #-}
@@ -6,31 +9,63 @@ import Prelude hiding (and,or,not,(&&),(||))
 import qualified Prelude as P
 import qualified Data.Bool as P
 import Ersatz
+
+import Exactly
+
 import Control.Monad
 import Control.Monad.State
 import System.Environment
 import Data.Foldable (toList)
+import qualified Control.Concurrent.Async as A
 
 main :: IO ()
 main = getArgs >>= \ case
-  [ how, w, s ] -> do
-    (stats, ~(Satisfied, msol@(Just b))) <- solveWithStats minisat
-        $ problem (case how of
-             "sumBit" -> return . sumBit
-             "sumBits" -> return . sumBits
-             "sumBitsM" -> sumBitsM
-          ) (read w) (read s)
-    print stats    
-    mapM_ print $ map (map fromEnum) b
+  [ w, s ] -> void $ run methods (read w) (read s)
+  [ w] -> search methods (read w)
+
+methods = -- Binaries :
+          -- SumBits :
+          Chinese :
+          -- Plain :
+          []
+
+
+search :: [Method] -> Int -> IO ()
+search how w = do
+  let go :: Int -> IO ()
+      go s = do
+        out <- run how w s
+        case out of
+          Nothing -> return ()
+          Just xss -> go $ pred $ sum $ concat xss
+  go $ w^2
+
+run methods w s = do
+  as <- forM methods $ \ how -> A.async $ single how w s
+  (_, r) <- A.waitAnyCancel as
+  return r
+
+single :: Method -> Int -> Int -> IO (Maybe [[Int]])
+single how w s = do
+    print (how, w, s)
+    (stats, ~(result, msol@(Just b))) <- solveWithStats minisat
+        $ problem how w s
+    print (how, stats)
+    case result of
+      Satisfied -> do
+        let xss = map (map fromEnum) b
+        mapM_ print xss
+        when (sum (concat xss) > s) $ error $ "what - " ++ show (sum $ concat xss)
+        return $ Just xss
+      _ -> return Nothing
 
 -- | dominating set of  s  knights on  w*w  board
 problem :: (MonadState s m, HasSAT s)
-  => ( [Bit] -> m Bits ) -> Int -> Int 
+  => Method -> Int -> Int 
   -> m [[Bit]]
-problem sumbits w s = do
+problem how w s = do
   b <- replicateM w $ replicateM w exists
-  su <- sumbits $ concat b
-  assert $ encode (fromIntegral s) >=? su
+  assert_exactly how s $ concat b
   let onboard (x,y) = 0 <= x P.&& x < w P.&& 0 <= y P.&& y < w
       get (x,y) = if onboard (x,y) then b !! x !! y else false
       positions = (,) <$> [0..w-1] <*> [0..w-1]
