@@ -23,6 +23,7 @@ import qualified Control.Concurrent.Async as A
 import Control.Exception (finally)
 import qualified GHC.Conc
 import Control.Lens ( (^.))
+import Data.Foldable (toList)
 
 main :: IO ()
 main = getArgs >>= \ case
@@ -32,11 +33,12 @@ main = getArgs >>= \ case
 
 configs = Config 
   <$> [ SumBits  
-     -- , Chinese
+      -- , Chinese
        ] 
-  <*> ( [ AMO_Binary ]
+  <*> ( []
+      ++ [ AMO_Binary ]
      --  ++ ( [ Project , LogPro  ]  <*> [ 7, 12 ] )
-     ++  (Based <$> [ 3, 5, 8 ] <*> [ 7, 12 ] )
+      ++  (Based <$> [ 8 ] <*> [ 8 ] )
     )
 
 search confs n = do
@@ -109,21 +111,45 @@ constraint arg = do
 	-- blockchain n $ reverse bs
 
         assert_exactly (exa conf) n bs
+
+        -- different_sums conf bs
+	different_differences conf bs
+	-- plain_clauses bs
+	-- enough_diffs conf n bs
 	
-        when True $ forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
+        return bs
+enough_diffs conf n bs = do
+  assert_exactly (exa conf) (div (n * (n-1)) 2)
+     $ toList $ M.fromListWith (||) $ do
+         (x:ys) <- tails bs
+	 (d,y) <- zip [1 ..] ys
+	 return (d, x && y)
+
+plain_clauses bs = do
+  let top = length bs - 1
+  forM_ [1.. top] $ \ dist ->
+    forM_ [0 .. top-dist] $ \ i ->
+       forM_ [i + dist .. top-dist] $ \ j ->
+         assertClause $ map not $ map (bs !!) [  i, i+dist, j, j+dist ]
+
+
+different_differences conf bs = do
+  let bound = length bs - 1
+  forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } 
                 guard $ q <= bound
                 return $ and [bs !! p, bs !! q ]
           assert_atmost_one (amo conf) ds
 
-        when False $ forM_ [1 .. 2 * bound] $ \ s -> do
+different_sums conf  bs = do
+  let bound = length bs - 1
+  forM_ [1 .. 2 * bound] $ \ s -> do
 	  let ss = do
 	        p <- [0 .. min s bound ] ; let q = s - p
 		guard $ p <= q P.&& q <= bound
 		return $ and [bs !! p, bs !! q ]
           when (not $ null ss) $ assert_atmost_one (amo conf) ss
-        return bs
 
 blockchain n bs = do
   let go d prev bs =
