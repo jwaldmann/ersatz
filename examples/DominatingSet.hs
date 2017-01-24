@@ -54,7 +54,7 @@ single how w s = do
     case result of
       Satisfied -> do
         let xss = map (map fromEnum) b
-            form = unwords . map (\ case 0 -> ". "; 1-> "K ") 
+            form = unwords . map (\ case 0 -> "."; 1-> "K") 
         mapM_ (putStrLn . form) xss
         when (sum (concat xss) > s) $ error $ "what - " ++ show (sum $ concat xss)
         return $ Just xss
