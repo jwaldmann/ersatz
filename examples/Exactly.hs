@@ -16,6 +16,7 @@ import Control.Monad.State.Class
 
 data Method = Binaries 
          | SumBits
+         | SumBit
          | Chinese
          | Plain
          | QSort
@@ -26,26 +27,29 @@ assert_exactly exa n xs = case exa of
   Binaries -> assert_exactly_binaries n xs
   Chinese -> assert $ exactly_chinese n xs
   SumBits -> assert $ encode (fromIntegral n) === sumBits xs
+  SumBit  -> assert $ encode (fromIntegral n) === sumBit  xs
   Plain -> assert $ exactly_plain n xs
   QSort -> assert_qsort n xs
 
 assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Int -> [Bit] -> m ()
 assert_qsort n xs = do
-  let (lo,hi) = splitAt n xs
-  assert $ not $ or lo
-  assert $ and hi
+  let (lo,hi) = splitAt n $ qsort xs
+  assert $ and lo
+  assert $ not $ or hi
 
+-- | http://www.iti.fh-flensburg.de/lang/algorithmen/sortieren/twodim/shear/shearsorten.htm
 qsort :: forall a. Boolean a => [a] -> [a]
 qsort [] = []
 qsort [x] = [x]
 qsort [x,y] = [ x || y , x && y ]
-qsort xs = 
+qsort [x,y,z] = [ x || y || z, x&&y || y&&z || z&&x  , x && y && z ]
+qsort xs = take (length xs) $ 
   let w = round $ sqrt $ fromIntegral $ length xs
       k = truncate $ logBase 2 $ fromIntegral $ length xs
-  in  concat $ iterate phase (blocks w xs) !! k
+  in  concat $ map qsort $ iterate phase (blocks w xs) !! k
 
 phase :: Boolean b => [[b]] -> [[b]]
-phase = zigzag . map qsort . transpose . map qsort . transpose 
+phase = transpose . map qsort . transpose . zigzag . map qsort 
 
 zigzag :: forall a. [[a]] -> [[a]]
 zigzag (x:y:zs) = x : reverse y : zigzag zs
