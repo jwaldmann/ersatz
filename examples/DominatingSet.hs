@@ -25,8 +25,10 @@ main = getArgs >>= \ case
 
 methods = Binaries :
           SumBits :
+          SumBit :
           Chinese :
-          -- Plain :
+          QSort :
+          Plain :
           []
 
 
