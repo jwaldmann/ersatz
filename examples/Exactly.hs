@@ -1,8 +1,8 @@
-{-# LANGUAGE KindSignatures #-}
 -- | various implementations of the "exactly-k" constraint
 -- (for arbitrary k)
 
 {-# language Rank2Types #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Exactly where
 
@@ -20,6 +20,11 @@ data Method = Binaries
          | Plain
          | QSort
   deriving Show
+
+assert_atmost method n xs = case method of
+  Binaries -> assert_atmost_binaries n xs
+  SumBits -> assert $ encode (fromIntegral n) >=? sumBits xs
+  
 
 assert_exactly ::  (HasSAT s, Control.Monad.State.Class.MonadState s m) => Method -> Int -> [Bit] -> m ()
 assert_exactly exa n xs = case exa of
