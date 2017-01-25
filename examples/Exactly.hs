@@ -1,3 +1,4 @@
+{-# LANGUAGE KindSignatures #-}
 -- | various implementations of the "exactly-k" constraint
 -- (for arbitrary k)
 
@@ -8,6 +9,7 @@ module Exactly where
 import Prelude hiding (and,or,all,any,not,(&&),(||))
 import Ersatz
 
+import Data.List (transpose)
 import qualified Data.Map.Strict as M
 import Control.Monad (replicateM, forM_)
 import Control.Monad.State.Class
@@ -16,6 +18,7 @@ data Method = Binaries
          | SumBits
          | Chinese
          | Plain
+         | QSort
   deriving Show
 
 assert_exactly ::  (HasSAT s, Control.Monad.State.Class.MonadState s m) => Method -> Int -> [Bit] -> m ()
@@ -24,6 +27,37 @@ assert_exactly exa n xs = case exa of
   Chinese -> assert $ exactly_chinese n xs
   SumBits -> assert $ encode (fromIntegral n) === sumBits xs
   Plain -> assert $ exactly_plain n xs
+  QSort -> assert_qsort n xs
+
+assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Int -> [Bit] -> m ()
+assert_qsort n xs = do
+  let (lo,hi) = splitAt n xs
+  assert $ not $ or lo
+  assert $ and hi
+
+qsort :: forall a. Boolean a => [a] -> [a]
+qsort [] = []
+qsort [x] = [x]
+qsort [x,y] = [ x || y , x && y ]
+qsort xs = 
+  let w = round $ sqrt $ fromIntegral $ length xs
+      k = truncate $ logBase 2 $ fromIntegral $ length xs
+  in  concat $ iterate phase (blocks w xs) !! k
+
+phase :: Boolean b => [[b]] -> [[b]]
+phase = zigzag . map qsort . transpose . map qsort . transpose 
+
+zigzag :: forall a. [[a]] -> [[a]]
+zigzag (x:y:zs) = x : reverse y : zigzag zs
+zigzag xs = xs
+
+blocks :: forall a. Boolean a => Int -> [a] -> [[a]]
+blocks w [] = []
+blocks w xs = 
+  let (lo,hi) = splitAt w xs 
+  in  if null hi 
+      then [ take w $ lo ++ repeat false ]
+      else lo : blocks w hi
 
 assert_exactly_binaries :: (HasSAT s, Control.Monad.State.Class.MonadState s m) => Int -> [Bit] -> m ()
 assert_exactly_binaries n xs = do
