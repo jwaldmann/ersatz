@@ -11,7 +11,7 @@ import Ersatz
 
 import Data.List (transpose)
 import qualified Data.Map.Strict as M
-import Control.Monad (replicateM, forM_)
+import Control.Monad (replicateM, forM_, when)
 import Control.Monad.State.Class
 
 data Method = Binaries 
@@ -22,36 +22,42 @@ data Method = Binaries
          | QSort
   deriving Show
 
+data Goal = Exactly |  Atmost | Atleast deriving (Eq, Ord, Show)
+
 assert_atmost method n xs = case method of
-  Binaries -> assert_atmost_binaries n xs
+  Binaries -> assert_binaries Atmost n xs
   SumBits -> assert $ encode (fromIntegral n) >=? sumBits xs
+  SumBit  -> assert $ encode (fromIntegral n) >=? sumBit  xs
+  Plain -> assert $ count_plain Atmost n xs
+  QSort -> assert_qsort Atmost n xs
   
 
 assert_exactly ::  (HasSAT s, Control.Monad.State.Class.MonadState s m) => Method -> Int -> [Bit] -> m ()
-assert_exactly exa n xs = case exa of
-  Binaries -> assert_exactly_binaries n xs
+assert_exactly method n xs = case method of
+  Binaries -> assert_binaries Exactly n xs
   Chinese -> assert $ exactly_chinese n xs
   SumBits -> assert $ encode (fromIntegral n) === sumBits xs
   SumBit  -> assert $ encode (fromIntegral n) === sumBit  xs
-  Plain -> assert $ exactly_plain n xs
-  QSort -> assert_qsort n xs
+  Plain -> assert $ count_plain Exactly n xs
+  QSort -> assert_qsort Exactly n xs
 
-assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Int -> [Bit] -> m ()
-assert_qsort n xs = do
+assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Goal -> Int -> [Bit] -> m ()
+assert_qsort goal n xs = do
   let (lo,hi) = splitAt n $ qsort xs
-  assert $ and lo
-  assert $ not $ or hi
+  when (goal == Atleast || goal == Exactly) $  assert $ and lo
+  when (goal == Atmost || goal == Exactly) $ assert $ not $ or hi
 
 -- | http://www.iti.fh-flensburg.de/lang/algorithmen/sortieren/twodim/shear/shearsorten.htm
 qsort :: forall a. Boolean a => [a] -> [a]
 qsort [] = []
 qsort [x] = [x]
 qsort [x,y] = [ x || y , x && y ]
-qsort [x,y,z] = [ x || y || z, x&&y || y&&z || z&&x  , x && y && z ]
-qsort xs = take (length xs) $ 
+-- qsort [x,y,z] = [ x || y || z, x&&y || y&&z || z&&x  , x && y && z ]
+qsort xs = 
   let w = round $ sqrt $ fromIntegral $ length xs
-      k = truncate $ logBase 2 $ fromIntegral $ length xs
-  in  concat $ map qsort $ iterate phase (blocks w xs) !! k
+      bs = blocks w xs
+      k = truncate $ logBase 2 $ fromIntegral $ length bs
+  in  concat $ map qsort $ iterate phase bs !! k
 
 phase :: Boolean b => [[b]] -> [[b]]
 phase = transpose . map qsort . transpose . zigzag . map qsort 
@@ -64,16 +70,16 @@ blocks :: forall a. Boolean a => Int -> [a] -> [[a]]
 blocks w [] = []
 blocks w xs = 
   let (lo,hi) = splitAt w xs 
-  in  if null hi 
-      then [ take w $ lo ++ repeat false ]
-      else lo : blocks w hi
+  in  lo : if null hi then [] else blocks w hi
 
-assert_exactly_binaries :: (HasSAT s, Control.Monad.State.Class.MonadState s m) => Int -> [Bit] -> m ()
-assert_exactly_binaries n xs = do
+assert_binaries :: (HasSAT s, Control.Monad.State.Class.MonadState s m) => Goal -> Int -> [Bit] -> m ()
+assert_binaries goal n xs = do
   let w = length xs
       b = succ $ truncate $ logBase 2 $ fromIntegral $ w - 1
   ms <- replicateM n ( Bits <$> replicateM b exists )
-  assert $ and $ zipWith (<?) ms $ tail ms ++ [ encode $ fromIntegral w ]
+  case goal of
+    Exactly -> assert $ and $ zipWith (<?) ms $ tail ms ++ [ encode $ fromIntegral w ]
+    Atmost -> return ()
   forM_ (zip [0 :: Integer ..] xs) $ \ (k, x) -> do
     assert $ x === any (encode k ===) ms
 
@@ -93,18 +99,14 @@ uf_plus_cut cut a b =
          , over = over a || over b || or post
          }
 
-exactly_plain :: forall a. Boolean a => Int -> [a] -> a
-exactly_plain n xs = 
+count_plain :: forall a. Boolean a => Goal -> Int -> [a] -> a
+count_plain goal n xs = 
   let s = foldb (uf_plus_cut (n+1)) $ map uf_unit xs
-  in  not (over s) && (contents s !! n)
+  in  case goal of
+     Exactly -> not (over s) && (contents s !! n)
+     Atmost -> not (over s)
+     Atleast -> over s || (contents s !! n)
 
-atmost_plain :: forall b. Boolean b => Int -> [b] -> b
-atmost_plain n xs = 
-  let s = foldb (uf_plus_cut (n+1)) $ map uf_unit xs
-  in  not (over s) 
-
-
--- | FIXME: broken at the moment?
 -- exactly_chinese :: forall b. (Equatable b, Boolean b) => Int -> [b] -> Bit
 exactly_chinese :: forall b. (Equatable b, Boolean b) => Int -> [b] -> Bit
 exactly_chinese n [] = bool (n == 0)
