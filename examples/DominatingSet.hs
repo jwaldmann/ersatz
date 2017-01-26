@@ -16,6 +16,7 @@ import Control.Monad
 import Control.Monad.State
 import System.Environment
 import Data.Foldable (toList)
+import Data.List (transpose)
 import qualified Control.Concurrent.Async as A
 
 main :: IO ()
@@ -23,11 +24,11 @@ main = getArgs >>= \ case
   [ w, s ] -> void $ run methods (read w) (read s)
   [ w] -> search methods (read w)
 
-methods = Binaries :
+methods = -- Binaries :
           SumBits :
-          SumBit :
-          Chinese :
-          QSort :
+          -- SumBit :
+          -- Chinese :
+          -- QSort :
           Plain :
           []
 
@@ -58,17 +59,24 @@ single how w s = do
         let xss = map (map fromEnum) b
             form = unwords . map (\ case 0 -> "."; 1-> "K") 
         mapM_ (putStrLn . form) xss
-        when (sum (concat xss) > s) $ error $ "what - " ++ show (sum $ concat xss)
+	let c = sum $ map fromEnum $ concat xss
+	putStrLn $ "actual number of knights is: " ++ show c
+        when (c > s) $ error $ "what - " ++ show (sum $ concat xss)
         return $ Just xss
-      _ -> return Nothing
+      _ -> do
+        print result
+        return Nothing
 
 -- | dominating set of  s  knights on  w*w  board
 problem :: (MonadState s m, HasSAT s)
   => Method -> Int -> Int 
   -> m [[Bit]]
 problem how w s = do
-  b <- replicateM w $ replicateM w exists
-  assert_exactly how s $ concat b
+  b <- allocate w 
+  break_symmetries [transpose, reverse, map reverse] b
+  assert_symmetries [ reverse, map reverse ] b
+
+  assert_atmost how s $ concat b
   let onboard (x,y) = 0 <= x P.&& x < w P.&& 0 <= y P.&& y < w
       get (x,y) = if onboard (x,y) then b !! x !! y else false
       positions = (,) <$> [0..w-1] <*> [0..w-1]
@@ -77,8 +85,18 @@ problem how w s = do
         guard $ dx^2 + dy^2 == 5
         return (x+dx,y+dy)
   forM_ positions $ \ p ->
-    assert $ or $ get p : map get (neighbours p)
+    assertClause $ get p : map get (neighbours p)
   return b
+
+allocate w = replicateM w $ replicateM w exists
+
+assert_symmetries ops b = do
+  forM ops $ \ op -> 
+    assert $ Bits (concat b) === Bits (concat $ op b)
+
+break_symmetries ops b = do
+  forM ops $ \ op -> 
+    assert $ Bits (concat b) <=? Bits (concat $ op b)
 
 -- * low-level binary arithmetics (with redundant clauses)
 
