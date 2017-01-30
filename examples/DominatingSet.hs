@@ -26,10 +26,12 @@ main = getArgs >>= \ case
 
 methods = -- Binaries :
           SumBits :
-          -- SumBit :
+          SumBit :
+	  -- Rectangle :
           -- Chinese :
           -- QSort :
-          Plain :
+	  -- Sortnet_Quad :
+          -- Plain :
           []
 
 
@@ -73,10 +75,18 @@ problem :: (MonadState s m, HasSAT s)
   -> m [[Bit]]
 problem how w s = do
   b <- allocate w 
-  break_symmetries [transpose, reverse, map reverse] b
-  assert_symmetries [ reverse, map reverse ] b
+  break_symmetries [ transpose, reverse, map reverse ] b
+  assert_symmetries (--  transpose . reverse :
+                     -- reverse . map reverse :
+                     -- map reverse :
+		     -- transpose :
+		      reverse :
+		     []
+		    )  b
 
   assert_atmost how s $ concat b
+  -- assert_atmost how s $ concat $ transpose b
+  
   let onboard (x,y) = 0 <= x P.&& x < w P.&& 0 <= y P.&& y < w
       get (x,y) = if onboard (x,y) then b !! x !! y else false
       positions = (,) <$> [0..w-1] <*> [0..w-1]
