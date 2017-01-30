@@ -21,11 +21,13 @@ import Data.Foldable (toList)
 import Data.List (transpose, sortOn)
 import qualified Control.Concurrent.Async as A
 import qualified Data.Array as A
+import System.Random
 
 main :: IO ()
 main = getArgs >>= \ case
-  [ w, s ] -> void $ run methods (read w) (read s)
-  [ w] -> search methods (read w)
+  [ "local", n, w ] -> void $ anneal (read w) (read n)
+  [ "global", w, s ] -> void $ run methods (read w) (read s)
+  [ "global", w] -> search methods (read w)
 
 methods :: [Method]
 methods = -- Binaries :
@@ -81,6 +83,49 @@ present msg s xss = do
     putStrLn $ "actual number of knights is: " ++ show c
     when (c > s) $ error $ "what - " ++ show (sum $ concat xss)
 
+inside a p = do
+  let ((uu,ll),(oo,rr)) = A.bounds a
+      ((u,l),(o,r)) = A.bounds p
+  x <- [if u == uu then u else u+2 .. if o==oo then o else o-2 ]
+  y <- [if l == ll then l else l+2 .. if r==rr then r else r-2 ]
+  guard $ a A.! (x,y)
+  return (x,y)
+
+anneal w n = do
+  let a = A.listArray ((1,1),(n,n)) $ repeat True
+  improve w a
+
+pick xs = (xs !!) <$> randomRIO (0,length xs-1)
+
+improve w a = do
+  p <- pick $ patches w a
+  let ks = inside a p
+      b = a A.// map (\ k -> (k,False)) ks
+      r = A.array (A.bounds p) $ do
+        i <- A.indices p
+        return (i, P.or $ map (at b) $ closed_neighbours i )
+  display "improve ..." a p      
+  mq <- local Sortnet (length ks-1) r
+  case mq of
+    Nothing -> improve w a
+    Just q -> do
+      let c = b A.// filter snd (A.assocs q)
+      display " ... improved" c p
+      improve w c
+
+info a = show (length $ filter id $ A.elems a)
+
+display msg a p = putStrLn $ unlines $ msg : info a : do
+  let ((u,l),(o,r)) = A.bounds a
+  x <- [ u .. o ]
+  return $ unwords $ do
+    y <- [ l .. r ]
+    let f = A.inRange (A.bounds p) (x,y)
+    return $ case (a A.! (x,y), f) of
+      (True, False) -> "k"
+      (True, True ) -> "K"
+      (False, False) -> "."
+      (False, True)  -> ":"
 
 patches w a = sortOn (\ a -> filter not $ A.elems a) $ do
   ul@(x,y) <- A.indices a
@@ -91,7 +136,8 @@ patches w a = sortOn (\ a -> filter not $ A.elems a) $ do
     i <- A.range bnd
     return (i, a A.! i)
 
--- | find a dominating set on the cells that contain False
+-- | a set that dominates the False cells of  a,
+-- and has at most  s  elements.
 local :: Method
       -> Int
       -> A.Array (Int,Int) Bool
