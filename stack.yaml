@@ -1,4 +1,5 @@
-resolver: lts-7.15
+# resolver: lts-7.15
+resolver: nightly-2017-01-30
 
 packages:
 - '.'
