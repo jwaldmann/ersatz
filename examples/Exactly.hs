@@ -22,7 +22,7 @@ data Method = Binaries
          | Chinese
          | Plain
          | QSort
-         | Sortnet_Quad
+         | Sortnet
 	 | Rectangle
   deriving Show
 
@@ -34,7 +34,7 @@ assert_atmost method n xs = case method of
   SumBit  -> assert $ encode (fromIntegral n) >=? sumBit  xs
   Plain -> assert $ count_plain Atmost n xs
   QSort -> assert_qsort Atmost n xs
-  Sortnet_Quad -> assert_sortnet_quad Atmost n xs
+  Sortnet -> assert_sortnet Atmost n xs
   Rectangle -> assert_rectangle Atmost n xs  
 
 assert_exactly ::  (HasSAT s, Control.Monad.State.Class.MonadState s m) => Method -> Int -> [Bit] -> m ()
@@ -45,25 +45,39 @@ assert_exactly method n xs = case method of
   SumBit  -> assert $ encode (fromIntegral n) === sumBit  xs
   Plain -> assert $ count_plain Exactly n xs
   QSort -> assert_qsort Exactly n xs
-  Sortnet_Quad -> assert_sortnet_quad Exactly n xs
+  Sortnet -> assert_sortnet Exactly n xs
 
 assert_rectangle Atmost n xs = do
   yss <- replicateM n $ replicateM (length xs) exists
   forM_ yss $ AMO.assert_atmost_one ( AMO.Project 8 )
   forM_ (zip xs $ transpose yss) $ \ (x,ys) -> assertClause $ not x : ys
 
-assert_sortnet_quad goal n xs = do
-  let (lo,hi) = splitAt n $ sortnet_quad xs
-  when (goal == Atleast || goal == Exactly) $  assert $ and lo
-  when (goal == Atmost || goal == Exactly) $ assert $ not $ or hi
+assert_sortnet goal n xs = do
+  let (lo,hi) = splitAt n $ sortnet xs
+  when (goal == Atleast || goal == Exactly) 
+     $ when (not $ null lo) $ assert $ last lo
+  when (goal == Atmost || goal == Exactly) 
+     $ when (not $ null hi) $ assert $ not $ head hi
   
-sortnet_quad xs = 
-  let go (x:y:zs) = (x|| y) : (x && y) : go zs
-      go xs = xs
-      og (x:xs) = x : go xs
-  in  if even (length xs)
-      then iterate (og . go) xs !! div (length xs) 2
-      else go $ iterate (og . go) xs !! div (length xs) 2
+sortnet xs = 
+  if length xs > 1 
+  then let (lo,hi) = eo xs
+       in mergenet (sortnet lo) (sortnet hi)
+  else xs
+
+eo [] = ([],[])
+eo (x:xs) = let (ys,zs) = eo xs in (x:zs,ys)
+
+mergenet [] ys = ys ; mergenet xs [] = xs
+mergenet [x] [y] = [ x||y , x&&y ]
+mergenet xs ys = 
+  let (ex,ox) = eo xs
+      (ey,oy) = eo ys
+      e : es = mergenet ex ey
+      os = mergenet ox oy
+      go (x:xs) (y:ys) = (x||y) : (x&&y) : go xs ys
+      go xs ys = xs ++ ys
+  in  e : go os es
 
 assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Goal -> Int -> [Bit] -> m ()
 assert_qsort goal n xs = do

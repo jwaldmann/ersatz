@@ -18,6 +18,7 @@ import System.Environment
 import Data.Foldable (toList)
 import Data.List (transpose)
 import qualified Control.Concurrent.Async as A
+import qualified Data.Array as A
 
 main :: IO ()
 main = getArgs >>= \ case
@@ -26,11 +27,11 @@ main = getArgs >>= \ case
 
 methods = -- Binaries :
           SumBits :
-          SumBit :
+          -- SumBit :
 	  -- Rectangle :
           -- Chinese :
           -- QSort :
-	  -- Sortnet_Quad :
+	  Sortnet :
           -- Plain :
           []
 
@@ -59,15 +60,22 @@ single how w s = do
     case result of
       Satisfied -> do
         let xss = map (map fromEnum) b
-            form = unwords . map (\ case 0 -> "."; 1-> "K") 
-        mapM_ (putStrLn . form) xss
-	let c = sum $ map fromEnum $ concat xss
-	putStrLn $ "actual number of knights is: " ++ show c
-        when (c > s) $ error $ "what - " ++ show (sum $ concat xss)
-        return $ Just xss
+        present "original" s xss 
+        let yss = map (map fromEnum) $ reduce b
+        when (xss /= yss) $ present "*********** reduced" s yss 
+        return $ Just yss
       _ -> do
         print result
         return Nothing
+
+present msg s xss = do
+    putStrLn msg
+    let form = unwords . map (\ case 0 -> "."; 1-> "K") 
+    mapM_ (putStrLn . form) xss
+    let c = sum $ map fromEnum $ concat xss
+    putStrLn $ "actual number of knights is: " ++ show c
+    when (c > s) $ error $ "what - " ++ show (sum $ concat xss)
+
 
 -- | dominating set of  s  knights on  w*w  board
 problem :: (MonadState s m, HasSAT s)
@@ -76,10 +84,10 @@ problem :: (MonadState s m, HasSAT s)
 problem how w s = do
   b <- allocate w 
   break_symmetries [ transpose, reverse, map reverse ] b
-  assert_symmetries (--  transpose . reverse :
+  assert_symmetries ( --  transpose . reverse :
                      -- reverse . map reverse :
-                     -- map reverse :
-		     -- transpose :
+                     --  map reverse :
+		     transpose :
 		      reverse :
 		     []
 		    )  b
@@ -90,23 +98,49 @@ problem how w s = do
   let onboard (x,y) = 0 <= x P.&& x < w P.&& 0 <= y P.&& y < w
       get (x,y) = if onboard (x,y) then b !! x !! y else false
       positions = (,) <$> [0..w-1] <*> [0..w-1]
-      neighbours (x,y) = do
-        (dx,dy) <- (,) <$> [-2..2] <*> [-2..2]
-        guard $ dx^2 + dy^2 == 5
-        return (x+dx,y+dy)
   forM_ positions $ \ p ->
     assertClause $ get p : map get (neighbours p)
   return b
 
+neighbours (x,y) = do
+        (dx,dy) <- (,) <$> [-2..2] <*> [-2..2]
+        guard $ dx^2 + dy^2 == 5
+        return (x+dx,y+dy)
+  
 allocate w = replicateM w $ replicateM w exists
 
 assert_symmetries ops b = do
-  forM ops $ \ op -> 
+  forM_ ops $ \ op -> 
     assert $ Bits (concat b) === Bits (concat $ op b)
 
 break_symmetries ops b = do
-  forM ops $ \ op -> 
-    assert $ Bits (concat b) <=? Bits (concat $ op b)
+  forM_ ops $ \ op -> 
+    assert $ concat b <=? concat (op b)
+
+-- * try to reduce a solution
+
+dominated a = P.and $ do
+  p <- A.indices a
+  return $ P.or $ do
+    q <- p : neighbours p
+    return $ at a q
+
+at a q = if A.inRange (A.bounds a) q then a A.! q else False
+
+reduce xss = 
+  let w = length xss
+      b = ((1,1),(w,w))
+      a = A.listArray ((1,1),(w,w)) $ concat xss
+      next a = do
+        (p,True) <- A.assocs a
+        let b = a A.// [(p,False)]
+        guard $ dominated b
+        return b
+      go a = case next a of
+         [] -> a
+         b:_ -> go b
+      out = go a
+  in  map (\x-> map (\y -> out A.!(x,y)) [1..w]) [1..w]
 
 -- * low-level binary arithmetics (with redundant clauses)
 
