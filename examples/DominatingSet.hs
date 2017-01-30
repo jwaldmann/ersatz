@@ -7,7 +7,7 @@
 {-# language KindSignatures #-}
 {-# language ExplicitForAll #-}
 
-import Prelude hiding (and,or,not,(&&),(||))
+import Prelude hiding (and,or,not,(&&),(||),any,all)
 import qualified Prelude as P
 import qualified Data.Bool as P
 import Ersatz
@@ -18,7 +18,7 @@ import Control.Monad
 import Control.Monad.State
 import System.Environment
 import Data.Foldable (toList)
-import Data.List (transpose)
+import Data.List (transpose, sortOn)
 import qualified Control.Concurrent.Async as A
 import qualified Data.Array as A
 
@@ -82,6 +82,33 @@ present msg s xss = do
     when (c > s) $ error $ "what - " ++ show (sum $ concat xss)
 
 
+patches w a = sortOn (\ a -> filter not $ A.elems a) $ do
+  ul@(x,y) <- A.indices a
+  let or = (x+w-1,y+w-1)
+  guard $ A.inRange (A.bounds a) or
+  let bnd = (ul,or)
+  return $ A.array bnd $ do
+    i <- A.range bnd
+    return (i, a A.! i)
+
+-- | find a dominating set on the cells that contain False
+local :: Method
+      -> Int
+      -> A.Array (Int,Int) Bool
+      -> IO (Maybe (A.Array (Int,Int) Bool))
+local how s a = do
+  (status, Just result) <- solveWith minisat $ do
+    u <- A.listArray (A.bounds a)
+        <$> replicateM (A.rangeSize $ A.bounds a) exists
+    assert_atmost how s $ A.elems u
+    forM_ (A.assocs a) $ \ (p,x) -> when (P.not x) $ do
+        assert $ any ( \ q -> at u q ) $ closed_neighbours p
+    return u
+  case status of
+    Satisfied -> return $ Just result
+    _ -> return Nothing
+  
+
 -- | dominating set of  s  knights on  w*w  board
 problem :: (MonadState s m, HasSAT s)
   => Method -> Int -> Int 
@@ -143,8 +170,7 @@ dominated a = P.and $ do
     q <- p : neighbours p
     return $ at a q
 
-at :: forall i. A.Ix i => A.Array i Bool -> i -> Bool
-at a q = if A.inRange (A.bounds a) q then a A.! q else False
+at a q = if A.inRange (A.bounds a) q then a A.! q else bool False
 
 closed_neighbours :: (Int, Int) -> [(Int, Int)]
 closed_neighbours p = p : neighbours p
