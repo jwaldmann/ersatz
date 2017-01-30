@@ -9,6 +9,8 @@ module Exactly where
 import Prelude hiding (and,or,all,any,not,(&&),(||))
 import Ersatz
 
+import qualified AMO
+
 import Data.List (transpose)
 import qualified Data.Map.Strict as M
 import Control.Monad (replicateM, forM_, when)
@@ -20,6 +22,8 @@ data Method = Binaries
          | Chinese
          | Plain
          | QSort
+         | Sortnet_Quad
+	 | Rectangle
   deriving Show
 
 data Goal = Exactly |  Atmost | Atleast deriving (Eq, Ord, Show)
@@ -30,7 +34,8 @@ assert_atmost method n xs = case method of
   SumBit  -> assert $ encode (fromIntegral n) >=? sumBit  xs
   Plain -> assert $ count_plain Atmost n xs
   QSort -> assert_qsort Atmost n xs
-  
+  Sortnet_Quad -> assert_sortnet_quad Atmost n xs
+  Rectangle -> assert_rectangle Atmost n xs  
 
 assert_exactly ::  (HasSAT s, Control.Monad.State.Class.MonadState s m) => Method -> Int -> [Bit] -> m ()
 assert_exactly method n xs = case method of
@@ -40,6 +45,25 @@ assert_exactly method n xs = case method of
   SumBit  -> assert $ encode (fromIntegral n) === sumBit  xs
   Plain -> assert $ count_plain Exactly n xs
   QSort -> assert_qsort Exactly n xs
+  Sortnet_Quad -> assert_sortnet_quad Exactly n xs
+
+assert_rectangle Atmost n xs = do
+  yss <- replicateM n $ replicateM (length xs) exists
+  forM_ yss $ AMO.assert_atmost_one ( AMO.Project 8 )
+  forM_ (zip xs $ transpose yss) $ \ (x,ys) -> assertClause $ not x : ys
+
+assert_sortnet_quad goal n xs = do
+  let (lo,hi) = splitAt n $ sortnet_quad xs
+  when (goal == Atleast || goal == Exactly) $  assert $ and lo
+  when (goal == Atmost || goal == Exactly) $ assert $ not $ or hi
+  
+sortnet_quad xs = 
+  let go (x:y:zs) = (x|| y) : (x && y) : go zs
+      go xs = xs
+      og (x:xs) = x : go xs
+  in  if even (length xs)
+      then iterate (og . go) xs !! div (length xs) 2
+      else go $ iterate (og . go) xs !! div (length xs) 2
 
 assert_qsort :: forall (m :: * -> *) s. (HasSAT s, MonadState s m) => Goal -> Int -> [Bit] -> m ()
 assert_qsort goal n xs = do
@@ -55,6 +79,7 @@ qsort [x,y] = [ x || y , x && y ]
 -- qsort [x,y,z] = [ x || y || z, x&&y || y&&z || z&&x  , x && y && z ]
 qsort xs = 
   let w = round $ sqrt $ fromIntegral $ length xs
+      -- w = 2 -- div (length xs + 1) 2
       bs = blocks w xs
       k = truncate $ logBase 2 $ fromIntegral $ length bs
   in  concat $ map qsort $ iterate phase bs !! k
