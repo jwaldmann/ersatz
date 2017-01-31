@@ -13,6 +13,7 @@ import qualified Data.Bool as P
 import Ersatz
 
 import Exactly
+import qualified Par
 
 import Control.Monad
 import Control.Monad.State
@@ -25,6 +26,7 @@ import System.Random
 
 main :: IO ()
 main = getArgs >>= \ case
+  [ "local", n ] -> void $ anneal  3 (read n)
   [ "local", n, w ] -> void $ anneal (read w) (read n)
   [ "global", w, s ] -> void $ run methods (read w) (read s)
   [ "global", w] -> search methods (read w)
@@ -95,8 +97,6 @@ anneal w n = do
   let a = A.listArray ((1,1),(n,n)) $ repeat True
   improve w a 0
 
-threshold = 50
-
 pick xs = (xs !!) <$> randomRIO (0,length xs-1)
 
 biased_pick [x] = return x
@@ -104,48 +104,55 @@ biased_pick (x:xs) = do
   f<- randomRIO (0,2::Int)
   if f == 0 then return x else biased_pick xs
 
+instance (Random a, Random b) => Random (a,b) where
+  randomRIO ((u,l),(o,r)) = 
+    (,) <$> randomRIO (u,o) <*> randomRIO (l,r)
+
+threshold = 10
+
+add_randoms k a = do
+  ps <- replicateM k $ randomRIO $ A.bounds a
+  return $ a A.// zip ps (repeat True)
+
 improve w a t | t > threshold = improve (w+1) a 0
 improve w a t = do
-  p <- pick $ patches w a
-  let ks = inside a p
-      b = a A.// map (\ k -> (k,False)) ks
-      r = A.array (A.bounds p) $ do
-        i <- A.indices p
-        return (i, P.or $ map (at b) $ closed_neighbours i )
-  display ("improve ..." ++ show (w,t)) a p      
-  mq <- local Sortnet (length ks-1) r
+  display ( show (w,t)) a Nothing
+  out <- Par.firstJust $ replicate 8 $ improve_step w a
+  case out of
+     Just b -> improve w b 0
+     Nothing -> do
+       -- a <- add_randoms 1 a
+       improve w a (t+1)
+
+improve_step w a = do
+  let verbose = False
+  (ks, bp) <- pick $ bordered_patches w a
+  let s = length ks
+  when verbose $ display ("improve ..." ++ show w) a $ Just bp
+  mq <- local Sortnet (s - 1) bp
   case mq of
-    Nothing -> improve w a $ t+1
+    Nothing -> return Nothing
     Just q -> do
-      let c = b A.// filter snd (A.assocs q)
-      display " ... improved" c p
-      improve w c 0
+      let c = a A.// zip ks (repeat False) A.// filter snd (A.assocs q)
+      when verbose $ display " ... improved" c $ Just q
+      return $ Just c
 
-info a = show (length $ filter id $ A.elems a)
-
-wrapped i xs = [i] ++ xs ++ [i]
-
-display msg a p = putStrLn $ unlines $ (msg :) $ wrapped (info a ) $ do
-  let ((u,l),(o,r)) = A.bounds a
-  x <- [ u .. o ]
-  return $ unwords $ do
-    y <- [ l .. r ]
-    let f = A.inRange (A.bounds p) (x,y)
-    return $ case (a A.! (x,y), f) of
-      (True, False) -> "k"
-      (True, True ) -> "K"
-      (False, False) -> "."
-      (False, True)  -> ":"
-
-patches w a = -- sortOn (\ a -> negate $  length $ filter id $ A.elems a) $
- do
-  ul@(x,y) <- A.indices a
-  let or = (x+w-1,y+w-1)
+bordered_patches w a = do
+  ul@(u,l) <- A.indices a
+  let or@(o,r) = (u+w-1,l+w-1)
   guard $ A.inRange (A.bounds a) or
-  let bnd = (ul,or)
-  return $ A.array bnd $ do
-    i <- A.range bnd
-    return (i, a A.! i)
+  let inner = (ul,or)
+  let inner_knights = do 
+         k <- A.range inner
+         guard $ at a k
+         return k
+  let a_without_inner = a A.// zip inner_knights (repeat False)
+  let outer = ((u-2,l-2),(o+2,r+2))
+  return (inner_knights, A.array outer $ do
+    p <- A.range outer
+    let is_covered = not (A.inRange (A.bounds a) p)
+                 || P.any (at a_without_inner) (closed_neighbours p)
+    return (p, is_covered) )
 
 -- | a set that dominates the False cells of  a,
 -- and has at most  s  elements.
@@ -168,6 +175,24 @@ local how s a = do
     Satisfied -> return $ Just result
     _ -> return Nothing
   
+info a = show (length $ filter id $ A.elems a)
+
+wrapped i xs = [i] ++ xs ++ [i]
+
+display msg a mp = putStrLn $ unlines $ (msg :) $ wrapped (info a ) $ do
+  let ((u,l),(o,r)) = A.bounds a
+  x <- [ u .. o ]
+  return $ unwords $ do
+    y <- [ l .. r ]
+    let f = case mp of
+           Just p -> A.inRange (A.bounds p) (x,y)
+           Nothing -> False
+    return $ case (a A.! (x,y), f) of
+      (True, False) -> "K"
+      (True, True ) -> "K"
+      (False, False) -> "."
+      (False, True)  -> "*"
+
 
 -- | dominating set of  s  knights on  w*w  board
 problem :: (MonadState s m, HasSAT s)
