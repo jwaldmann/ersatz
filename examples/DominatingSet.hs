@@ -95,7 +95,7 @@ inside a p = do
 
 anneal w n = do
   let a = A.listArray ((1,1),(n,n)) $ repeat True
-  improve w a 0
+  improve w a 
 
 pick xs = (xs !!) <$> randomRIO (0,length xs-1)
 
@@ -114,15 +114,17 @@ add_randoms k a = do
   ps <- replicateM k $ randomRIO $ A.bounds a
   return $ a A.// zip ps (repeat True)
 
-improve w a t | t > threshold = improve (w+1) a 0
-improve w a t = do
-  display ( show (w,t)) a Nothing
-  out <- Par.firstJust $ replicate 8 $ improve_step w a
+improve w a = do
+  display ( show w ) a Nothing
+  out <- Par.firstJustPool 8 $ do
+    v <- [w .. ]
+    i <- [1..100]
+    return $ improve_step v a
   case out of
-     Just b -> improve w b 0
+     Just (v, b) -> improve (min v $ w+1) b 
      Nothing -> do
        -- a <- add_randoms 1 a
-       improve w a (t+1)
+       improve (w+1) a 
 
 improve_step w a = do
   let verbose = False
@@ -135,7 +137,7 @@ improve_step w a = do
     Just q -> do
       let c = a A.// zip ks (repeat False) A.// filter snd (A.assocs q)
       when verbose $ display " ... improved" c $ Just q
-      return $ Just c
+      return $ Just (w, c)
 
 bordered_patches w a = do
   ul@(u,l) <- A.indices a
