@@ -28,6 +28,7 @@ data Method = Binaries
 
 data Goal = Exactly |  Atmost | Atleast deriving (Eq, Ord, Show)
 
+assert_atmost _ n xs | n < 0 = assert false
 assert_atmost method n xs = case method of
   Binaries -> assert_binaries Atmost n xs
   SumBits -> assert $ encode (fromIntegral n) >=? sumBits xs

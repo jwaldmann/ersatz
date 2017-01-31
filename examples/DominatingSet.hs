@@ -93,29 +93,39 @@ inside a p = do
 
 anneal w n = do
   let a = A.listArray ((1,1),(n,n)) $ repeat True
-  improve w a
+  improve w a 0
+
+threshold = 50
 
 pick xs = (xs !!) <$> randomRIO (0,length xs-1)
 
-improve w a = do
+biased_pick [x] = return x
+biased_pick (x:xs) = do
+  f<- randomRIO (0,2::Int)
+  if f == 0 then return x else biased_pick xs
+
+improve w a t | t > threshold = improve (w+1) a 0
+improve w a t = do
   p <- pick $ patches w a
   let ks = inside a p
       b = a A.// map (\ k -> (k,False)) ks
       r = A.array (A.bounds p) $ do
         i <- A.indices p
         return (i, P.or $ map (at b) $ closed_neighbours i )
-  display "improve ..." a p      
+  display ("improve ..." ++ show (w,t)) a p      
   mq <- local Sortnet (length ks-1) r
   case mq of
-    Nothing -> improve w a
+    Nothing -> improve w a $ t+1
     Just q -> do
       let c = b A.// filter snd (A.assocs q)
       display " ... improved" c p
-      improve w c
+      improve w c 0
 
 info a = show (length $ filter id $ A.elems a)
 
-display msg a p = putStrLn $ unlines $ msg : info a : do
+wrapped i xs = [i] ++ xs ++ [i]
+
+display msg a p = putStrLn $ unlines $ (msg :) $ wrapped (info a ) $ do
   let ((u,l),(o,r)) = A.bounds a
   x <- [ u .. o ]
   return $ unwords $ do
@@ -127,7 +137,8 @@ display msg a p = putStrLn $ unlines $ msg : info a : do
       (False, False) -> "."
       (False, True)  -> ":"
 
-patches w a = sortOn (\ a -> filter not $ A.elems a) $ do
+patches w a = -- sortOn (\ a -> negate $  length $ filter id $ A.elems a) $
+ do
   ul@(x,y) <- A.indices a
   let or = (x+w-1,y+w-1)
   guard $ A.inRange (A.bounds a) or
@@ -147,7 +158,10 @@ local how s a = do
     u <- A.listArray (A.bounds a)
         <$> replicateM (A.rangeSize $ A.bounds a) exists
     assert_atmost how s $ A.elems u
-    forM_ (A.assocs a) $ \ (p,x) -> when (P.not x) $ do
+    forM_ (A.assocs a) $ \ (p,x) -> 
+      if x 
+      then assert $ not $ at u p
+      else do
         assert $ any ( \ q -> at u q ) $ closed_neighbours p
     return u
   case status of
