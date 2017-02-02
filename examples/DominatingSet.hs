@@ -1,5 +1,8 @@
 -- | (minimal) dominating set on the knight's graph,
--- cf. http://oeis.org/A006075
+-- cf. http://oeis.org/A006075 (values for board size up to 20)
+-- http://www.contestcen.com/knight.htm - larger boards:
+-- 20  25   30   35   40   45   50
+-- 62  96  135  182  230  291  350
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# language LambdaCase #-}
@@ -26,7 +29,7 @@ import System.Random
 
 main :: IO ()
 main = getArgs >>= \ case
-  [ "local", n ] -> void $ anneal  3 (read n)
+  [ "local", n ] -> void $ anneal 1 (read n)
   [ "local", n, w ] -> void $ anneal (read w) (read n)
   [ "global", w, s ] -> void $ run methods (read w) (read s)
   [ "global", w] -> search methods (read w)
@@ -116,14 +119,15 @@ add_randoms k a = do
 
 improve w a = do
   display ( show w ) a Nothing
-  out <- Par.firstJustPool 8 $ do
-    v <- [w .. ]
-    i <- [1..100]
-    return $ improve_step v a
+  out <- Par.firstJustPool 6 $ repeat $ do
+    v <- randomRIO (max 1 $ w-2, w+2)
+    improve_step v a
   case out of
-     Just (v, b) -> improve (min v $ w+1) b 
+     Just (v, b) -> do
+       b <- add_randoms 1 b
+       improve v b 
      Nothing -> do
-       -- a <- add_randoms 1 a
+       a <- add_randoms w a
        improve (w+1) a 
 
 improve_step w a = do
