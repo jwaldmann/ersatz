@@ -262,7 +262,7 @@ executable ersatz-sudoku
 
 executable ersatz-dominatingset
    if flag(examples)
-     build-depends: base, ersatz, mtl, containers, async, array, random
+     build-depends: base, ersatz, mtl, containers, async, array, random, stm
    else
      buildable: False
    default-language: Haskell2010
