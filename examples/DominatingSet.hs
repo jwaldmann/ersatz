@@ -1,8 +1,8 @@
 -- | (minimal) dominating set on the knight's graph,
 -- cf. http://oeis.org/A006075 (values for board size up to 20)
 -- http://www.contestcen.com/knight.htm - larger boards:
--- 20  25   30   35   40   45   50
--- 62  96  135  182  230  291  350
+-- 10 15 20  25   30   35   40   45   50
+-- 16 36 62  96  135  182  230  291  350
 
 {-# LANGUAGE FlexibleContexts #-}
 {-# language LambdaCase #-}
@@ -23,16 +23,25 @@ import Control.Monad.State
 import System.Environment
 import Data.Foldable (toList)
 import Data.List (transpose, sortOn)
+import GHC.Conc
 import qualified Control.Concurrent.Async as A
 import qualified Data.Array as A
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Data.Foldable (toList)
+import Control.Concurrent.STM
+import System.IO
 import System.Random
+import System.Timeout
 
 main :: IO ()
-main = getArgs >>= \ case
-  [ "local", n ] -> void $ anneal 1 (read n)
-  [ "local", n, w ] -> void $ anneal (read w) (read n)
-  [ "global", w, s ] -> void $ run methods (read w) (read s)
-  [ "global", w] -> search methods (read w)
+main = do
+  hSetBuffering stderr LineBuffering
+  getArgs >>= \ case
+    [ "local", n ] -> void $ anneal 1 (read n)
+    [ "local", n, w ] -> void $ anneal (read w) (read n)
+    [ "global", w, s ] -> void $ run methods (read w) (read s)
+    [ "global", w] -> search methods (read w)
 
 methods :: [Method]
 methods = -- Binaries :
@@ -96,65 +105,100 @@ inside a p = do
   guard $ a A.! (x,y)
   return (x,y)
 
-anneal w n = do
-  let a = A.listArray ((1,1),(n,n)) $ repeat True
-  improve w a 
 
+pick [] = error "pick []"
 pick xs = (xs !!) <$> randomRIO (0,length xs-1)
 
+biased_pick [] = error "biased_pick []"
 biased_pick [x] = return x
 biased_pick (x:xs) = do
-  f<- randomRIO (0,2::Int)
+  f<- randomRIO (0,1::Int)
   if f == 0 then return x else biased_pick xs
 
 instance (Random a, Random b) => Random (a,b) where
   randomRIO ((u,l),(o,r)) = 
     (,) <$> randomRIO (u,o) <*> randomRIO (l,r)
 
-threshold = 10
 
-add_randoms k a = do
+add_randoms log k a = do
   ps <- replicateM k $ randomRIO $ A.bounds a
+  unmark_all log ps
   return $ a A.// zip ps (repeat True)
 
-improve w a = do
-  display ( show w ) a Nothing
-  out <- Par.firstJustPool 6 $ repeat $ do
-    v <- randomRIO (max 1 $ w-2, w+2)
-    improve_step v a
+anneal w n = do
+  let a = A.listArray ((1,1),(n,n)) $ repeat True
+  log <- atomically $ newTVar M.empty
+  improve log w a 
+
+improve log w a0 = do
+  let a = -- reduca
+          a0
+  -- display ( show w ) a Nothing
+  out <- Par.firstJustPool GHC.Conc.numCapabilities $ do
+    to <- (^2) <$> [ 1 :: Int .. ]
+    return $ do
+      v <- randomRIO (max 1 $ w - 1, w + 1)
+      -- hPutStrLn stderr $ unwords ["start", "w", show v, "to", show to ]
+      A.race (threadDelay $ to * 10^6) ( improve_step log v a ) >>= \ case
+        Left {} -> return Nothing
+	Right res -> return res
   case out of
      Just (v, b) -> do
-       b <- add_randoms 1 b
-       improve v b 
+       display ( show w ) b Nothing
+       b <- add_randoms log 1 b
+       improve log v b 
      Nothing -> do
-       a <- add_randoms w a
-       improve (w+1) a 
+       a <- add_randoms log w a
+       improve log (w+1) a 
 
-improve_step w a = do
+improve_step log w a = do
   let verbose = False
-  (ks, bp) <- pick $ bordered_patches w a
-  let s = length ks
-  when verbose $ display ("improve ..." ++ show w) a $ Just bp
-  mq <- local Sortnet (s - 1) bp
-  case mq of
-    Nothing -> return Nothing
-    Just q -> do
-      let c = a A.// zip ks (repeat False) A.// filter snd (A.assocs q)
-      when verbose $ display " ... improved" c $ Just q
-      return $ Just (w, c)
+  m <- atomically $ readTVar log
+  let candidates = M.fromListWith S.union
+       $ map ( \ (off, bp) -> (length off, S.singleton (off, bp)))
+       $ filter ( \ (off,bp) -> not $ null off )
+       $ filter ( \ (off, bp) -> not $ M.member (A.bounds bp) m )
+       $ bordered_patches w a
+  if null candidates
+     then improve_step log (w+1) a
+     else do
+       (inner, bp) <- biased_pick (M.toDescList candidates) >>= \ (k,v) -> pick $ toList v
+       let off = map fst $ filter snd $ A.assocs inner
+       	   s = length off
+       when verbose $ display ("improve ..." ++ show w) a $ Just $ A.bounds bp
+       mq <- local SumBits (s - 1) (A.bounds inner) bp 
+       case mq of
+         Nothing -> do
+           mark log (A.bounds bp)
+           return Nothing
+	   improve_step log (w+1) a
+         Just q -> do
+           let on = map fst $ filter snd $ A.assocs q
+      	   let c = a A.// zip off (repeat False) A.// zip on (repeat True)
+      	   when verbose $ display " ... improved" c $ Just $ A.bounds q
+      	   unmark_all log $ off ++ on
+      	   return $ Just (w, c)
+
+mark log bnd = atomically $ do
+  m <- readTVar log
+  writeTVar log $! M.insert bnd () m
+
+unmark_all log points = atomically $ do
+  m <- readTVar log
+  writeTVar log $! foldl ( \ m p -> M.filterWithKey (\bnd _ -> not $ A.inRange bnd p) m ) m points
 
 bordered_patches w a = do
   ul@(u,l) <- A.indices a
   let or@(o,r) = (u+w-1,l+w-1)
   guard $ A.inRange (A.bounds a) or
   let inner = (ul,or)
-  let inner_knights = do 
+  let inner_array = A.array inner $ do
          k <- A.range inner
-         guard $ at a k
-         return k
+         return (k, at a k)
+      inner_knights = map fst $ filter snd $ A.assocs inner_array
   let a_without_inner = a A.// zip inner_knights (repeat False)
   let outer = ((u-2,l-2),(o+2,r+2))
-  return (inner_knights, A.array outer $ do
+  return (inner_array, A.array outer $ do
     p <- A.range outer
     let is_covered = not (A.inRange (A.bounds a) p)
                  || P.any (at a_without_inner) (closed_neighbours p)
@@ -164,18 +208,20 @@ bordered_patches w a = do
 -- and has at most  s  elements.
 local :: Method
       -> Int
+      -> ((Int,Int),(Int,Int))
       -> A.Array (Int,Int) Bool
       -> IO (Maybe (A.Array (Int,Int) Bool))
-local how s a = do
+local how s bnd a = do
+  let verbose = False
+  when False $ do
+    hPutStrLn stderr $ unwords ["local", show how, show s, show bnd , show $ A.bounds a ]
+    display "local" a (Just bnd)
   (status, Just result) <- solveWith minisat $ do
-    u <- A.listArray (A.bounds a)
-        <$> replicateM (A.rangeSize $ A.bounds a) exists
+    u <- A.listArray bnd
+        <$> replicateM (A.rangeSize bnd) exists
     assert_atmost how s $ A.elems u
     forM_ (A.assocs a) $ \ (p,x) -> 
-      if x 
-      then assert $ not $ at u p
-      else do
-        assert $ any ( \ q -> at u q ) $ closed_neighbours p
+      when (not x) $ assertClause $ map ( \ q -> at u q ) $ closed_neighbours p
     return u
   case status of
     Satisfied -> return $ Just result
@@ -191,7 +237,7 @@ display msg a mp = putStrLn $ unlines $ (msg :) $ wrapped (info a ) $ do
   return $ unwords $ do
     y <- [ l .. r ]
     let f = case mp of
-           Just p -> A.inRange (A.bounds p) (x,y)
+           Just p -> A.inRange p (x,y)
            Nothing -> False
     return $ case (a A.! (x,y), f) of
       (True, False) -> "K"
@@ -206,11 +252,11 @@ problem :: (MonadState s m, HasSAT s)
   -> m [[Bit]]
 problem how w s = do
   b <- allocate w 
-  when True $ break_symmetries 
+  when False $ break_symmetries 
         [  transpose, reverse, map reverse 
         -- transpose . reverse, reverse . map reverse
         ] b
-  when True $ assert_symmetries (  transpose . reverse :
+  when False $ assert_symmetries (  transpose . reverse :
                      -- reverse . map reverse :
                      --  map reverse :
 		     -- transpose :
@@ -269,12 +315,13 @@ closed_neighbours p = p : neighbours p
 reduce :: forall (t :: * -> *). Foldable t => t [Bool] -> [[Bool]]
 reduce xss = 
   let w = length xss
-      b = ((1::Int,1::Int),(w,w))
-      a = A.listArray ((1,1),(w,w)) $ concat xss
-      next a = do
+      out = reduca $ A.listArray ((1,1),(w,w)) $ concat xss      
+  in  map (\x-> map (\y -> out A.!(x,y)) [1..w]) [1..w]
+
+reduca a =
+  let next a = do
         (p,True) <- A.assocs a
         let b = a A.// [(p,False)]
-        -- guard $ dominated b
         guard $ and $ (P.any (at b) $ neighbours p) : do 
            q <- neighbours p
            guard $ A.inRange (A.bounds b) q
@@ -283,8 +330,7 @@ reduce xss =
       go a = case next a of
          [] -> a
          b:_ -> go b
-      out = go a
-  in  map (\x-> map (\y -> out A.!(x,y)) [1..w]) [1..w]
+   in go a
 
 -- * low-level binary arithmetics (with redundant clauses)
 
