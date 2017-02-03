@@ -155,18 +155,19 @@ improve_step log w a = do
   let verbose = False
   m <- atomically $ readTVar log
   let candidates = M.fromListWith S.union
-       $ map ( \ (off, bp) -> (length off, S.singleton (off, bp)))
+       $ map ( \ (off, bp) -> (length $ filter id $ A.elems off, S.singleton (off, bp)))
        $ filter ( \ (off,bp) -> not $ null off )
        $ filter ( \ (off, bp) -> not $ M.member (A.bounds bp) m )
        $ bordered_patches w a
   if null candidates
      then improve_step log (w+1) a
      else do
+       --  print $ map (\(k,v) -> (fromIntegral k / fromIntegral (w^2) :: Double, length v)  ) $ M.toList candidates
        (inner, bp) <- biased_pick (M.toDescList candidates) >>= \ (k,v) -> pick $ toList v
        let off = map fst $ filter snd $ A.assocs inner
        	   s = length off
        when verbose $ display ("improve ..." ++ show w) a $ Just $ A.bounds bp
-       mq <- local SumBits (s - 1) (A.bounds inner) bp 
+       mq <- local Sortnet (s - 1) (A.bounds inner) bp 
        case mq of
          Nothing -> do
            mark log (A.bounds bp)
