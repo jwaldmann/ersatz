@@ -137,7 +137,7 @@ improve log w a0 = do
   out <- Par.firstJustPool GHC.Conc.numCapabilities $ do
     to <- (^2) <$> [ 1 :: Int .. ]
     return $ do
-      v <- randomRIO (max 1 $ w - 1, w + 1)
+      v <- return w  --  randomRIO (max 1 $ w - 1, w + 1)
       -- hPutStrLn stderr $ unwords ["start", "w", show v, "to", show to ]
       A.race (threadDelay $ to * 10^6) ( improve_step log v a ) >>= \ case
         Left {} -> return Nothing
@@ -145,11 +145,13 @@ improve log w a0 = do
   case out of
      Just (v, b) -> do
        display ( show w ) b Nothing
-       b <- add_randoms log 1 b
+       b <- add_randoms log (knights a - knights b) b
        improve log v b 
      Nothing -> do
        a <- add_randoms log w a
        improve log (w+1) a 
+
+knights a = length $ filter id $ A.elems a
 
 improve_step log w a = do
   let verbose = False
@@ -257,7 +259,7 @@ problem how w s = do
         [  transpose, reverse, map reverse 
         -- transpose . reverse, reverse . map reverse
         ] b
-  when False $ assert_symmetries (  transpose . reverse :
+  when True $ assert_symmetries (  transpose . reverse :
                      -- reverse . map reverse :
                      --  map reverse :
 		     -- transpose :
@@ -265,7 +267,10 @@ problem how w s = do
 		     []
 		    )  b
 
-  assert_atmost how s $ concat b
+  -- assert_atmost how s $ concat b
+  let q = div s 4
+  forM_ (quads b) $ \ yss -> assert_atmost how q $ concat yss
+
   -- assert_atmost how s $ concat $ transpose b
   
   let onboard (x,y) = 0 <= x P.&& x < w P.&& 0 <= y P.&& y < w
@@ -274,6 +279,13 @@ problem how w s = do
   forM_ positions $ \ p ->
     assertClause $ get p : map get (neighbours p)
   return b
+
+quads xss = do
+  let halves xs = splitAt (div (length xs) 2) xs
+      front = fst . halves
+      back  = snd . halves
+  f <- [front, back] ; g <- [front, back]
+  return $ map f $ g xss
 
 distances :: [(Int,Int)]
 distances = do
