@@ -24,6 +24,7 @@ module Ersatz.Bit
   , assert
   , assertClause
   , Boolean(..)
+  , reify  
   ) where
 
 import Prelude hiding ((&&),(||),not,and,or,all,any)
@@ -150,6 +151,7 @@ instance Codec Bit where
           Not c'  -> not <$> decode sol c'
           Var l   -> decode sol l
           Run _ -> mzero
+          Reify x -> decode sol x
     where
       andMaybeBools :: [Maybe Bool] -> Maybe Bool
       andMaybeBools mbs
