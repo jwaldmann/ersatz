@@ -66,7 +66,11 @@ data Bit
   | Not !Bit
   | Var !Literal
   | Run ( forall m s . (MonadState s m, HasSAT s) => m Bit )
+  | Reify !Bit -- ^ argument will be protected from And-merging,
+               -- so we will produce a literal, which is good for sharing
   deriving (Typeable)
+
+reify f = Reify f
 
 instance Show Bit where
   showsPrec d (And xs)  = showParen (d > 10) $
@@ -78,6 +82,7 @@ instance Show Bit where
   showsPrec d (Not x)  = showParen (d > 10) $ showString "Not " . showsPrec 11 x
   showsPrec d (Var x)  = showParen (d > 10) $ showString "Var " . showsPrec 11 x
   showsPrec d (Run _)  = showParen (d > 10) $ showString "Run ..."
+  showsPrec d (Reify x)  = showParen (d > 10) $ showString "Reify " . showsPrec 11 x
 
 instance Boolean Bit where
   -- improve the stablemap this way
@@ -175,15 +180,14 @@ assert b = do
 -- | @assertClause xs@ is @assert $ or xs@ but does create
 -- exactly one clause (and no auxiliary literal)
 assertClause :: (MonadState s m, HasSAT s, Foldable f) => f Bit -> m ()
-assertClause bs = do
-  ls <- forM (toList bs) runBit
-  assertFormula $ fromClause $ foldMap fromLiteral ls
+assertClause bs = assert $ or $ map reify $ toList bs
 
 -- | Convert a 'Bit' to a 'Literal'.
 runBit :: (MonadState s m, HasSAT s) => Bit -> m Literal
 runBit (Not c) = negateLiteral `liftM` runBit c
 runBit (Var l) = return l
 runBit (Run action) = action >>= runBit
+runBit (Reify x) = runBit x
 runBit b = generateLiteral b $ \out ->
   assertFormula =<< case b of
     And bs    -> formulaAnd out `liftM` mapM runBit (toList bs)
