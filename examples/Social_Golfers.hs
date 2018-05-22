@@ -40,9 +40,16 @@ run g p w = do
         let bnd = ((1,1,1),(g,top_player,w))
   	sch :: A.Array (Group, Player, Week) Bit
     	  <- A.array bnd <$> forM ( A.range bnd ) ( \ ix -> (ix,) <$> exists )
+        let bits_for_week w = for groups $ \ g -> for players $ \ pl -> sch A.! (g,pl,w)
+
+	-- fixed assignment for first week  
 	assert $ foreach players $ \ pl ->
 	         foreach groups $ \ gr ->
 		 sch A.! (gr,pl,1) === bool (gr == default_group_of pl)
+        -- symmetry breaking for each weak
+	assert $ foreach weeks $ \ w -> monotonic (bits_for_week w)
+	-- symmetry breaking over all weeks
+	assert $ monotonic $ for weeks $ \ w -> concat $ bits_for_week w
   	assert $ foreach weeks $ \ w ->
            foreach players $ \ p ->
            exactly 1 $ for groups $ \ g -> sch A.! (g,p,w)
@@ -65,6 +72,8 @@ run g p w = do
 	     guard $ sch A.! (g,p,w)
 	     return $ printf "%3d" $ fromEnum p
 
+monotonic :: [[Bit]] -> Bit
+monotonic xss = and $ zipWith (>?) xss $ tail xss
 
 
 for xs f = f <$> xs
