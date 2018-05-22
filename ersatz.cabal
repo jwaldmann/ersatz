@@ -289,6 +289,15 @@ executable ersatz-golomb
    other-modules: Exactly, AMO
    hs-source-dirs: examples
 
+executable ersatz-social-golfers
+   if flag(examples)
+     build-depends: base, ersatz, array
+   else
+     buildable: False
+   default-language: Haskell2010
+   main-is: Social_Golfers.hs
+   hs-source-dirs: examples
+
 -- test-suite properties
 --   type: exitcode-stdio-1.0
 --   ghc-options: -Wall
@@ -356,4 +365,11 @@ test-suite z001
   main-is: Z001.hs
   hs-source-dirs: tests
   build-depends: base, mtl, ersatz
+  default-language: Haskell2010
+
+test-suite social_golfers
+  type: exitcode-stdio-1.0
+  main-is: Social_Golfers.hs
+  hs-source-dirs: examples
+  build-depends: base, ersatz, array
   default-language: Haskell2010
