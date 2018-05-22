@@ -95,11 +95,62 @@ constraint arg = do
             mbound = _mbound arg
             bound = maybe (n^2) id mbound
         bs :: [Bit] <- (true :) <$> replicateM bound exists
-        E.assert_exactly (exa conf) (n-1) $ tail bs
-        forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
+
+        -- blockchain n bs
+	-- blockchain n $ reverse bs
+
+        E.assert_exactly (exa conf) n bs
+
+        -- different_sums conf bs
+	different_differences conf bs
+	-- plain_clauses bs
+	-- enough_diffs conf n bs
+	
+        return bs
+
+enough_diffs conf n bs = do
+  E.assert_exactly (exa conf) (div (n * (n-1)) 2)
+     $ toList $ M.fromListWith (||) $ do
+         (x:ys) <- tails bs
+	 (d,y) <- zip [1 ..] ys
+	 return (d, x && y)
+
+plain_clauses bs = do
+  let top = length bs - 1
+  forM_ [1.. top] $ \ dist ->
+    forM_ [0 .. top-dist] $ \ i ->
+       forM_ [i + dist .. top-dist] $ \ j ->
+         assertClause $ map not $ map (bs !!) [  i, i+dist, j, j+dist ]
+
+
+different_differences conf bs = do
+  let bound = length bs - 1
+  forM_ [1 .. bound] $ \ dist -> when (2*dist <= bound) $ do
           let ds = do 
                 p <- [ 0..bound] ; let { q = p + dist } 
                 guard $ q <= bound
                 return $ and [bs !! p, bs !! q ]
           AMO.assert_atmost_one (amo conf) ds
-        return bs
+different_sums conf  bs = do
+  let bound = length bs - 1
+  forM_ [1 .. 2 * bound] $ \ s -> do
+	  let ss = do
+	        p <- [0 .. min s bound ] ; let q = s - p
+		guard $ p <= q P.&& q <= bound
+		return $ and [bs !! p, bs !! q ]
+          when (not $ null ss) $ AMO.assert_atmost_one (amo conf) ss
+
+blockchain n bs = do
+  let go d prev bs =
+        if d < n
+	then do
+	  let (pre, post) = splitAt d bs
+	  let s = prev + sumBits pre
+	  assert $ s <=? encode (fromIntegral d)
+          go (d+1) s post
+	else do
+	  let s = prev + sumBits bs
+	  assert $ s === encode (fromIntegral n)
+	  return ()
+  go 1 (encode 0) bs
+
