@@ -5,7 +5,7 @@
 -- Markus Triska at https://www.metalevel.at/
 
 {-# language LambdaCase, PatternSignatures, TupleSections,
-  GeneralizedNewtypeDeriving
+  GeneralizedNewtypeDeriving, StandaloneDeriving
 #-}
 
 import Prelude hiding (not,and,or,any,all,(&&),(||))
@@ -15,27 +15,34 @@ import Ersatz.Counting
 import qualified Data.Array as A
 import Data.Ix
 import Control.Monad (forM, when, guard )
+import Text.Printf
 import System.Environment
 
 main = getArgs >>= \ case
   [] -> run 5 3 7
-  [g, p, w] -> run (read g) (read p) (read w)
+  [g, p, w] -> run (toEnum $ read g) (toEnum $ read p) (toEnum $ read w)
 
 newtype Group = Group Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
+newtype Position = Position Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Player = Player Int  deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Week = Week Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 
-run :: Group -> Player -> Week -> IO ()
+run :: Group -> Position -> Week -> IO ()
 run g p w = do
   let groups = [1 .. g ]
       positions = [1 .. p]
-      players = (,) <$> groups <*> positions
+      default_group_of pl = toEnum $ 1 + div (fromEnum pl - 1) (fromEnum p)
+      top_player = toEnum $ fromEnum g * fromEnum p
+      players = [1 .. top_player ]
       weeks = [1 .. w]
   (status, msol@(Just sch)) <- 
       solveWith minisat $ do
-        let bnd = ((1,(1,1),1),(g,(g,p),w))
-  	sch :: A.Array (Group, (Group,Player), Week) Bit
+        let bnd = ((1,1,1),(g,top_player,w))
+  	sch :: A.Array (Group, Player, Week) Bit
     	  <- A.array bnd <$> forM ( A.range bnd ) ( \ ix -> (ix,) <$> exists )
+	assert $ foreach players $ \ pl ->
+	         foreach groups $ \ gr ->
+		 sch A.! (gr,pl,1) === bool (gr == default_group_of pl)
   	assert $ foreach weeks $ \ w ->
            foreach players $ \ p ->
            exactly 1 $ for groups $ \ g -> sch A.! (g,p,w)
@@ -54,10 +61,9 @@ run g p w = do
 	 return $ unwords $ do
 	   g <- groups
 	   "|" : do
-	     gp <- players
-	     guard $ sch A.! (g,gp,w)
-	     let (gr,ps) = gp
-	     return $ show $ (fromEnum gr - 1) * (fromEnum p) + fromEnum ps
+	     p <- players
+	     guard $ sch A.! (g,p,w)
+	     return $ printf "%3d" $ fromEnum p
 
 
 
