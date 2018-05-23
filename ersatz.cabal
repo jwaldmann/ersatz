@@ -291,7 +291,7 @@ executable ersatz-golomb
 
 executable ersatz-social-golfers
    if flag(examples)
-     build-depends: base, ersatz, array
+     build-depends: base, ersatz, array, containers
    else
      buildable: False
    default-language: Haskell2010
@@ -371,5 +371,5 @@ test-suite social_golfers
   type: exitcode-stdio-1.0
   main-is: Social_Golfers.hs
   hs-source-dirs: examples
-  build-depends: base, ersatz, array
+  build-depends: base, ersatz, array, containers
   default-language: Haskell2010

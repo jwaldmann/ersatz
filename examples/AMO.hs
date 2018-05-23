@@ -25,7 +25,7 @@ assert_atmost_one alg xs = case alg of
    LogPro cut -> assert_atmost_one_logpro cut xs
    Unary -> assert_atmost_one_unary xs
    Binary -> assert_atmost_one_binary xs
-   -- AMO_Plain -> assert $ atmost_plain 1 xs
+   Plain -> assert $ atmost_one_plain xs
   
 assert_atmost_one_squared cut xs = do
   let blocks k [] = []
@@ -80,11 +80,11 @@ count k xs = foldl' ( \ cs x -> zipWith (\l r -> choose l r x ) cs (false : cs) 
 atleast k xs = not $ or $ count k xs 
 exactly k xs = count (k+1) xs !! k
 
-atmost_one [] = true
-atmost_one [x] = true
-atmost_one xs = 
+atmost_one_plain [] = true
+atmost_one_plain [x] = true
+atmost_one_plain xs = 
   let (lo,hi) = splitAt (div (length xs) 2) xs
-  in atmost_one lo && not (or hi) || not (or lo) && atmost_one hi
+  in atmost_one_plain lo && not (or hi) || not (or lo) && atmost_one_plain hi
 
 {-
 atmost_one xs = 

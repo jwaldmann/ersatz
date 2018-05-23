@@ -11,10 +11,11 @@
 import Prelude hiding (not,and,or,any,all,(&&),(||))
 import Ersatz
 import Ersatz.Counting
+import qualified AMO
 
 import qualified Data.Array as A
 import Data.Ix
-import Control.Monad (forM, when, guard )
+import Control.Monad (forM, forM_, when, guard )
 import Text.Printf
 import System.Environment
 
@@ -28,7 +29,7 @@ newtype Player = Player Int  deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Week = Week Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 
 fixed_assignments = True
-symmetry_breaking = False
+symmetry_breaking = True
 
 run :: Group -> Position -> Week -> IO ()
 run g p w = do
@@ -67,10 +68,11 @@ run g p w = do
   	assert $ foreach weeks $ \ w ->
            foreach groups $ \ g ->
 	   exactly (fromEnum p) $ for players $ \ p -> sch A.! (g,p,w)
-  	assert $ foreach (selections 2 players) $ \ [p,q] ->
-           atmost 1
-	 $ groups >>= \ g -> weeks >>= \ w ->
-	   return $ sch A.! (g,p,w) && sch A.! (g,q,w)
+        forM_ (selections 2 players) $ \ [p,q] ->
+  	   -- assert $ atmost 1
+	   AMO.assert_atmost_one AMO.Binary
+  	     $ groups >>= \ g -> weeks >>= \ w ->
+	       return $ sch A.! (g,p,w) && sch A.! (g,q,w)
 	   
         return sch
 	
