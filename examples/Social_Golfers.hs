@@ -15,6 +15,7 @@ import qualified AMO
 
 import qualified Data.Array as A
 import Data.Ix
+import Data.List (tails)
 import Control.Monad (forM, forM_, when, guard )
 import Text.Printf
 import System.Environment
@@ -88,8 +89,10 @@ run g p w = do
 	     return $ printf "%2d" $ fromEnum p
 
 monotonic :: [[Bit]] -> Bit
-monotonic xss = and $ zipWith (>?) xss $ tail xss
+monotonic = monotonic_linear
 
+monotonic_linear xs = and $ zipWith (>?) xs $ tail xs
+monotonic_quadratic xs = and $ for (selections 2 xs) $ \ [x,y] -> x >? y
 
 for xs f = f <$> xs
 
