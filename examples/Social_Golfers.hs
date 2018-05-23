@@ -27,6 +27,9 @@ newtype Position = Position Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Player = Player Int  deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Week = Week Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 
+fixed_assignments = True
+symmetry_breaking = False
+
 run :: Group -> Position -> Week -> IO ()
 run g p w = do
   let groups = [1 .. g ]
@@ -42,14 +45,22 @@ run g p w = do
     	  <- A.array bnd <$> forM ( A.range bnd ) ( \ ix -> (ix,) <$> exists )
         let bits_for_week w = for groups $ \ g -> for players $ \ pl -> sch A.! (g,pl,w)
 
-	-- fixed assignment for first week  
-	assert $ foreach players $ \ pl ->
+	when fixed_assignments $ do
+  	  -- fixed assignment for first week  
+	  assert $ foreach players $ \ pl ->
 	         foreach groups $ \ gr ->
 		 sch A.! (gr,pl,1) === bool (gr == default_group_of pl)
-        -- symmetry breaking for each weak
-	assert $ foreach weeks $ \ w -> monotonic (bits_for_week w)
-	-- symmetry breaking over all weeks
-	assert $ monotonic $ for weeks $ \ w -> concat $ bits_for_week w
+          -- fixed assignment for players after second week
+	  assert $ foreach (drop 1 weeks) $ \ w ->
+	    foreach [1 .. min (fromEnum g) (fromEnum p) ] $ \ i ->
+	        sch A.! (toEnum i, toEnum i, w)
+
+        when symmetry_breaking $ do
+          -- symmetry breaking for each weak
+  	  assert $ foreach weeks $ \ w -> monotonic (bits_for_week w)
+	  -- symmetry breaking over all weeks
+	  assert $ monotonic $ for weeks $ \ w -> concat $ bits_for_week w
+	  
   	assert $ foreach weeks $ \ w ->
            foreach players $ \ p ->
            exactly 1 $ for groups $ \ g -> sch A.! (g,p,w)
@@ -60,7 +71,9 @@ run g p w = do
            atmost 1
 	 $ groups >>= \ g -> weeks >>= \ w ->
 	   return $ sch A.! (g,p,w) && sch A.! (g,q,w)
+	   
         return sch
+	
   case status of
     Satisfied -> do 
        putStrLn $ unlines $ do
@@ -70,7 +83,7 @@ run g p w = do
 	   "|" : do
 	     p <- players
 	     guard $ sch A.! (g,p,w)
-	     return $ printf "%3d" $ fromEnum p
+	     return $ printf "%2d" $ fromEnum p
 
 monotonic :: [[Bit]] -> Bit
 monotonic xss = and $ zipWith (>?) xss $ tail xss
