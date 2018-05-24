@@ -30,7 +30,8 @@ newtype Player = Player Int  deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 newtype Week = Week Int deriving (Read, Show, Enum, Ix, Eq, Ord, Num)
 
 fixed_assignments = True
-symmetry_breaking = True
+symmetry_breaking_weeks = True
+symmetry_breaking_players = False
 
 run :: Group -> Position -> Week -> IO ()
 run g p w = do
@@ -45,8 +46,11 @@ run g p w = do
         let bnd = ((1,1,1),(g,top_player,w))
   	sch :: A.Array (Group, Player, Week) Bit
     	  <- A.array bnd <$> forM ( A.range bnd ) ( \ ix -> (ix,) <$> exists )
-        let bits_for_week w = for groups $ \ g -> for players $ \ pl -> sch A.! (g,pl,w)
-
+        let bits_for_week w =
+              for groups $ \ g -> for players $ \ pl -> sch A.! (g,pl,w)
+            bits_for_player p = groups >>= \ g ->
+                                weeks >>= \ w ->
+                                return $ sch A.! (g, p, w)
 	when fixed_assignments $ do
   	  -- fixed assignment for first week  
 	  assert $ foreach players $ \ pl ->
@@ -57,12 +61,15 @@ run g p w = do
 	    foreach [1 .. min (fromEnum g) (fromEnum p) ] $ \ i ->
 	        sch A.! (toEnum i, toEnum i, w)
 
-        when symmetry_breaking $ do
+        when symmetry_breaking_weeks $ do
           -- symmetry breaking for each weak
   	  assert $ foreach weeks $ \ w -> monotonic (bits_for_week w)
 	  -- symmetry breaking over all weeks
 	  assert $ monotonic $ for weeks $ \ w -> concat $ bits_for_week w
-	  
+
+        when symmetry_breaking_players $ do
+          assert $ monotonic $ for players bits_for_player
+          
   	assert $ foreach weeks $ \ w ->
            foreach players $ \ p ->
            exactly 1 $ for groups $ \ g -> sch A.! (g,p,w)
@@ -71,7 +78,7 @@ run g p w = do
 	   exactly (fromEnum p) $ for players $ \ p -> sch A.! (g,p,w)
         forM_ (selections 2 players) $ \ [p,q] ->
   	   -- assert $ atmost 1
-	   AMO.assert_atmost_one AMO.Binary
+	   AMO.assert_atmost_one AMO.Plain
   	     $ groups >>= \ g -> weeks >>= \ w ->
 	       return $ sch A.! (g,p,w) && sch A.! (g,q,w)
 	   
@@ -89,7 +96,14 @@ run g p w = do
 	     return $ printf "%2d" $ fromEnum p
 
 monotonic :: [[Bit]] -> Bit
-monotonic = monotonic_linear
+monotonic = monotonic_balanced
+
+monotonic_balanced [] = true
+monotonic_balanced [x] = true
+monotonic_balanced [x,y] = x >? y
+monotonic_balanced xs =
+  let (pre, this : post) = splitAt (div (length xs) 2) xs
+  in  monotonic_balanced (pre ++ [this]) && monotonic_balanced ([this] ++ post)
 
 monotonic_linear xs = and $ zipWith (>?) xs $ tail xs
 monotonic_quadratic xs = and $ for (selections 2 xs) $ \ [x,y] -> x >? y

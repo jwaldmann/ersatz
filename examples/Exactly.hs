@@ -123,6 +123,7 @@ assert_binaries goal n xs = do
   forM_ (zip [0 :: Integer ..] xs) $ \ (k, x) -> do
     assert $ x === any (encode k ===) ms
 
+-- | unary representation with fixed bit width
 data UF b = UF { contents :: [b] , over :: b }
 
 uf_unit ::  Boolean b => b -> UF b
