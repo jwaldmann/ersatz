@@ -213,4 +213,17 @@ is_permutation
   :: (Ix x, Ix y, b ~ Bit )
   => Matrix x y b -> b
 is_permutation m =
-  all (C.exactly 1) (rows m) && all (C.exactly 1) (columns m)
+  all (exactly_one) (rows m) && all (exactly_one) (columns m)
+
+exactly_one :: Boolean b => [b] -> b
+exactly_one xs =
+  let go [] = (true, false)
+      go [x] = (not x, x)
+      go xs =
+        let (ys,zs) = parts xs
+            (zero_ys,one_ys) = go ys
+            (zero_zs,one_zs) = go zs
+        in  ( zero_ys && zero_zs
+            , one_ys && zero_zs || zero_ys && one_zs
+            )
+  in  snd $ go xs          
