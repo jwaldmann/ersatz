@@ -107,7 +107,7 @@ rehearsal inst bound = do
             pay = zipWith (&&) inc dec
         return $ zipWith (&&) pay $ map not col
   
-  let total = sum $ do
+  let total = balanced_sum $ do
         ((d,a),i) <- assocs idle
         return $ switch i $ times_constant ( cost inst A.! a )
                                            ( duration A.! d ) 
@@ -115,6 +115,20 @@ rehearsal inst bound = do
   assert $ total <=? encode bound
   
   return (sched, total)
+
+balanced_sum :: [Bits] -> Bits
+balanced_sum xs = balanced_fold (encode 0) id (+) xs
+
+balanced_fold :: r -> (a -> r) -> (r -> r -> r) -> [a] -> r
+balanced_fold z u b xs =
+  let go [] = z
+      go [x] = u x
+      go xs = let (ys,zs) = parts xs in b (go ys) (go zs)
+  in  go xs
+
+parts :: [a] -> ([a],[a])
+parts [] = ([],[])
+parts (x:xs) = let (ys,zs) = parts xs in (x:zs,ys)
 
 
 times_constant :: Integer -> Bits -> Bits
@@ -190,7 +204,7 @@ mtimes (Matrix a) (Matrix b) =
   in  case ylo == ylo' && yhi == yhi' of
         True -> Matrix $ A.array bnd $ do
           (x,z) <- A.range bnd
-          return ((x,z), foldr plus zero $ do
+          return ((x,z), balanced_fold zero id plus $ do
             y <- A.range (ylo,yhi)
             return $ times (a A.! (x,y)) (b A.! (y,z)) )
         _ -> error $ "huh: " ++ show (A.bounds a, A.bounds b)
