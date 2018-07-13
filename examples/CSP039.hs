@@ -108,9 +108,12 @@ rehearsal inst bound = do
         return $ zipWith (&&) pay $ map not col
   
   let total = balanced_sum $ do
-        ((d,a),i) <- assocs idle
-        return $ switch i $ times_constant ( cost inst A.! a )
-                                           ( duration A.! d ) 
+        let ((dlo,alo),(dhi,ahi)) = bounds idle
+        a <- A.range (alo,ahi)
+        return $ times_constant (cost inst A.! a) $ balanced_sum $ do
+          d <- A.range (dlo,dhi)
+          let i = idle ! (d,a)
+          return $ switch i $ duration A.! d
 
   assert $ total <=? encode bound
   
@@ -147,15 +150,19 @@ bitwidth (Bits xs) = length xs
 
 class Semiring r where
   zero :: r ; plus  :: r -> r -> r
+  plus_many :: [r] -> r
   one  :: r ; times :: r -> r -> r
 
 instance Boolean b => Semiring b where
-  zero = false ; plus = (||) ; one = true ; times = (&&)
+  zero = false ; plus = (||) ; plus_many = or
+  one = true ; times = (&&)
 
 newtype Matrix x y w = Matrix (A.Array (x,y) w) deriving Show
 
 instance Functor (Matrix x y) where
   fmap f (Matrix a) = Matrix (fmap f a)
+
+Matrix a ! i = a A.! i
 
 assocs (Matrix a) = A.assocs a
 bounds (Matrix a) = A.bounds a
@@ -204,7 +211,7 @@ mtimes (Matrix a) (Matrix b) =
   in  case ylo == ylo' && yhi == yhi' of
         True -> Matrix $ A.array bnd $ do
           (x,z) <- A.range bnd
-          return ((x,z), balanced_fold zero id plus $ do
+          return ((x,z), plus_many $ do
             y <- A.range (ylo,yhi)
             return $ times (a A.! (x,y)) (b A.! (y,z)) )
         _ -> error $ "huh: " ++ show (A.bounds a, A.bounds b)
