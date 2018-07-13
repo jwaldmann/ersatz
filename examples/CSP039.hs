@@ -67,24 +67,22 @@ film1 = Instance
 main = do
   solve film1
 
-solve inst = do
-  let go bound = do
-         as <- forM [0 .. 7] $ \ d -> async $ solve_below inst $ bound - (2^d)
-         waitAnyCancelJust as >>= \ case
-           Nothing -> error "huh"
-           Just b -> go b
-  go $ upperbound inst
+solve inst = solve_from inst $ upperbound inst
+
+solve_from inst bound = do
+  as <- forM [0 .. 3] $ \ d -> async $ solve_below inst $ bound - (3^d)
+  waitAnyCancelJust as >>= \ case
+    Nothing -> error "huh"
+    Just b -> solve_from inst b
 
 waitAnyCancelJust as = do
-  let go n = 
-       if n > 0 
-       then do
+  let go [] = return Nothing
+      go as = do
          (this,res) <- waitAny as
          case res of 
-           Nothing -> go $ n - 1
+           Nothing -> go $ filter (/= this) as
            Just x ->  do forM_ as cancel ; return $ Just x
-       else return Nothing
-  go $ length as
+  go as
 
 solve_below inst bound = do
     putStrLn $ "upper bound " ++ show bound  
