@@ -122,10 +122,15 @@ rehearsal p inst bound = do
   forM_ (assocs sched) $ \  ((d,p),f) ->
     assert $ f ==> ( duration A.! d === encode (dura inst A.! p ))
 
-  let use :: Matrix Day Actor Bit
-      use = mtimes sched $ ( encode <$> need inst )
+  let (alo, ahi) = A.bounds $ cost inst
+  use :: Matrix Day Actor Bit <- mfree exists ((Day lo, alo),(Day hi, ahi))
+  -- let use = mtimes sched $ ( encode <$> need inst )
+  forM_ (assocs sched) $ \ ((d,p),f) -> 
+    -- assert $ f ==> row use d === (map encode $ row (need inst) p)
+    forM_ (zip (row use d) (row (need inst) p)) $ \ (u,n) -> 
+      assert $ f ==> (u === encode n)
 
-      idle = fromLList (bounds use) $ transpose $ do
+  let idle = fromLList (bounds use) $ transpose $ do
         col <- columns use
         let inc = drop 1 $ scanl (||) false col
             dec = scanr (||) false col
@@ -195,7 +200,13 @@ ixcolumns (Matrix a ) = do
   y <- A.range (ylo,yhi)
   return (y, map (\ x -> a A.! (x,y)) $ A.range (xlo,xhi))
 
+row m x = 
+  let ((xlo,ylo),(xhi,yhi)) = bounds m 
+  in map (\y -> m ! (x,y)) $ A.range (ylo,yhi)
 rows m = map snd $ ixrows m
+column m y = 
+  let ((xlo,ylo),(xhi,yhi)) = bounds m 
+  in map (\x -> m ! (x,y)) $ A.range (xlo,xhi)
 columns m = map snd $ ixcolumns m
 
 instance (Ix x, Ix y, Codec a) => Codec (Matrix x y a) where
