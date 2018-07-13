@@ -204,6 +204,7 @@ library
     Ersatz.Bit
     Ersatz.Bit.Display
     Ersatz.Bits
+    Ersatz.NBV
     Ersatz.BitChar
     Ersatz.Codec
     Ersatz.Equatable

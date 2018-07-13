@@ -1,20 +1,26 @@
 -- | http://csplib.org/Problems/prob039/
 
-{-# language FlexibleInstances, UndecidableInstances
+{-# language FlexibleInstances, UndecidableInstances, LambdaCase
   , TupleSections, GeneralizedNewtypeDeriving , TypeFamilies
-  , PatternSignatures
+  , PatternSignatures, ScopedTypeVariables, FlexibleContexts
 #-}
 
 import Prelude hiding (and,or,not,(&&),(||),any,all)
 import qualified Prelude as P
 import Ersatz
+import Ersatz.NBV
+import GHC.TypeLits
 import qualified Ersatz.Counting as C
 
 import qualified Data.Array as A
 import Data.Ix
-import Data.List (transpose)
+import Data.List (transpose, tails)
 import Control.Monad (forM)
 import Control.Monad.State
+import Data.Reflection
+import Data.Proxy
+
+import Control.Concurrent.Async
 
 newtype Day   = Day   Int deriving (Eq, Ord, Ix, Num, Show)
 newtype Piece = Piece Int deriving (Eq, Ord, Ix, Num, Show)
@@ -62,26 +68,45 @@ main = do
   solve film1
 
 solve inst = do
-  let go b = do
-        putStrLn $ "upper bound " ++ show b
-        out <- solveWith minisat $ rehearsal film1 b
-        case out of
-          ( Satisfied
-            , Just (sched :: Matrix Day Piece Bool, total::Integer)) -> do
-             print total
-             print $ map fst $ filter snd $ assocs sched
-             go $ pred total
+  let go bound = do
+         as <- forM [0 .. 7] $ \ d -> async $ solve_below inst $ bound - (2^d)
+         waitAnyCancelJust as >>= \ case
+           Nothing -> error "huh"
+           Just b -> go b
   go $ upperbound inst
+
+waitAnyCancelJust as = do
+  let go n = 
+       if n > 0 
+       then do
+         (this,res) <- waitAny as
+         case res of 
+           Nothing -> go $ n - 1
+           Just x ->  do forM_ as cancel ; return $ Just x
+       else return Nothing
+  go $ length as
+
+solve_below inst bound = do
+    putStrLn $ "upper bound " ++ show bound  
+    reifyNat (fromIntegral $ bitwidth $ encode bound) $ \ p -> do
+    out <- solveWith minisat $ rehearsal p inst bound
+    case out of
+      ( Satisfied , Just (sched :: Matrix Day Piece Bool, total :: Integer)) -> do
+        print total
+        print $ map fst $ filter snd $ assocs sched
+        return $ Just total
+      _ -> return Nothing
+
 
 -- | pay all actors on all days
 upperbound inst =
   ( sum $ A.elems $ dura inst ) * ( sum $ A.elems $ cost inst )
 
 rehearsal
-  :: (MonadState s m, HasSAT s)
-  => Instance -> Integer
-  -> m (Matrix Day Piece Bit, Bits)
-rehearsal inst bound = do
+  :: (MonadState s m, HasSAT s, KnownNat w)
+  => Proxy w -> Instance -> Integer
+  -> m (Matrix Day Piece Bit, NBV w)
+rehearsal p inst bound = do
   let (Piece lo, Piece hi) = A.bounds $ dura inst
   
   sched :: Matrix Day Piece Bit
@@ -110,16 +135,16 @@ rehearsal inst bound = do
   let total = balanced_sum $ do
         let ((dlo,alo),(dhi,ahi)) = bounds idle
         a <- A.range (alo,ahi)
-        return $ times_constant (cost inst A.! a) $ balanced_sum $ do
+        return $ (*) (encode $ cost inst A.! a) $ balanced_sum $ do
           d <- A.range (dlo,dhi)
           let i = idle ! (d,a)
-          return $ switch i $ duration A.! d
+          return $ nbv $ switch i $ duration A.! d
 
-  assert $ total <=? encode bound
+  assert $ total <=? nbv (encode bound)
   
   return (sched, total)
 
-balanced_sum :: [Bits] -> Bits
+balanced_sum :: (Num b, Num (Decoded b), Codec b) => [b] -> b
 balanced_sum xs = balanced_fold (encode 0) id (+) xs
 
 balanced_fold :: r -> (a -> r) -> (r -> r -> r) -> [a] -> r
@@ -132,15 +157,6 @@ balanced_fold z u b xs =
 parts :: [a] -> ([a],[a])
 parts [] = ([],[])
 parts (x:xs) = let (ys,zs) = parts xs in (x:zs,ys)
-
-
-times_constant :: Integer -> Bits -> Bits
-times_constant 0 b = encode 0
-times_constant c b =
-  let p = shift $ times_constant (div c 2) b
-  in  if odd c then p + b else p
-
-shift (Bits xs) = Bits (false : xs)
 
 switch :: Bit -> Bits -> Bits
 switch x (Bits ys) = Bits (map (x &&) ys)
@@ -222,8 +238,15 @@ is_permutation
 is_permutation m =
   all (exactly_one) (rows m) && all (exactly_one) (columns m)
 
-exactly_one :: Boolean b => [b] -> b
-exactly_one xs =
+exactly_one :: [Bit] -> Bit
+exactly_one = exactly_one_1
+
+exactly_one_2 = C.exactly 1
+
+exactly_one_0 xs = or xs && and ( do
+ x : ys <- tails xs ; y <- ys ; return $ not $ x && y )
+
+exactly_one_1 xs =
   let go [] = (true, false)
       go [x] = (not x, x)
       go xs =
