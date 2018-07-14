@@ -24,12 +24,20 @@ import Data.Proxy
 import Control.Concurrent.Async
 import GHC.Conc
 
-newtype Day   = Day   Int deriving (Eq, Ord, Ix, Num, Show)
+main = do
+  solve film1
+
+newtype Day   = Day   Int deriving (Eq, Ord, Ix, Num, Enum, Show)
 newtype Piece = Piece Int deriving (Eq, Ord, Ix, Num, Show)
 newtype Actor = Actor Int deriving (Eq, Ord, Ix, Num, Show)
 
+data Instance = Instance
+  { cost :: A.Array Actor Integer
+  , need :: Matrix Piece Actor Bool
+  , dura :: A.Array Piece Integer
+  } deriving Show
 
-{-
+{- film1:
  Day     1 2 3 4 5 6 7 8 9 10 1 2 3 4 5 6 7 8 9 20 Cost/100
 Actor 1  1 1 1 1 0 1 0 1 0  1 1 0 0 0 0 0 0 0 0  0 10
 Actor 2  1 1 1 0 0 0 1 1 0  1 0 0 1 1 1 0 1 0 0  1  4
@@ -41,12 +49,6 @@ Actor 7  0 0 0 0 1 0 1 1 0  0 0 0 0 0 1 0 0 0 0  0  4
 Actor 8  0 0 0 0 0 1 1 1 1  0 0 0 0 0 0 0 0 0 0  0 20
 Duration 2 1 1 1 1 3 1 1 1  2 1 1 2 1 2 1 1 2 1  1
 -}
-
-data Instance = Instance
-  { cost :: A.Array Actor Integer
-  , need :: Matrix Piece Actor Bool
-  , dura :: A.Array Piece Integer
-  } deriving Show
 
 film1 = Instance
   { cost = A.listArray (Actor 1, Actor 8)
@@ -66,8 +68,61 @@ film1 = Instance
       ]
   }
 
-main = do
-  solve film1
+{- film2:
+Day 1 2 3 4 5 6 7 8 9 10 11 12 13Cost/100
+Actor 1 0 0 1 0 0 0 0 0 1 1 1 1 0 40
+Actor 2 1 1 0 0 1 1 1 1 1 1 1 0 1 20
+Actor 3 0 1 0 0 0 0 0 1 0 0 0 0 0 20
+Actor 4 1 0 0 1 1 1 1 1 1 1 0 0 1 10
+Actor 5 0 0 0 1 0 0 0 0 0 1 0 0 0 5
+Actor 6 1 0 0 0 0 1 1 0 1 1 1 1 0 10
+Actor 7 0 1 0 0 1 0 0 0 1 1 1 0 0 5
+Actor 8 0 0 0 0 0 1 0 0 0 1 0 0 0 4
+Actor 9 0 0 0 0 0 0 0 0 0 0 1 0 1 5
+Actor 10 0 0 0 0 0 0 0 0 1 1 0 0 0 4
+Duration 1 1 1 1 3 1 1 1 1 1 1 1 1
+-}
+
+film2 = Instance
+  { cost = A.listArray (Actor 1, Actor 10) [40,20,20,10,5,10,5,4,5,4]
+  , dura = A.listArray (Piece 1, Piece 13) [1,1,1,1,3,1,1,1,1,1,1,1,1]
+  , need = fromLList ((Piece 1, Actor 1),(Piece 13, Actor 10))
+      $ transpose $ map (map toEnum)
+    [[0,0,1,0,0,0,0,0,1,1,1,1,0]
+    ,[1,1,0,0,1,1,1,1,1,1,1,0,1]
+    ,[0,1,0,0,0,0,0,1,0,0,0,0,0]
+    ,[1,0,0,1,1,1,1,1,1,1,0,0,1]
+    ,[0,0,0,1,0,0,0,0,0,1,0,0,0]
+    ,[1,0,0,0,0,1,1,0,1,1,1,1,0]
+    ,[0,1,0,0,1,0,0,0,1,1,1,0,0]
+    ,[0,0,0,0,0,1,0,0,0,1,0,0,0]
+    ,[0,0,0,0,0,0,0,0,0,0,1,0,1]
+    ,[0,0,0,0,0,0,0,0,1,1,0,0,0]
+    ]
+  }
+
+{- film0:
+Piece    1 2 3 4 5 6 7 8 9
+Player 1 1 1 0 1 0 1 1 0 1
+Player 2 1 1 0 1 1 1 0 1 0
+Player 3 1 1 0 0 0 0 1 1 0
+Player 4 1 0 0 0 1 1 0 0 1
+Player 5 0 0 1 0 1 1 1 1 0
+Duration 2 4 1 3 3 2 5 7 6
+-}
+
+film0 = Instance
+  { cost = A.listArray (Actor 1, Actor 5) [1,1,1,1,1]
+  , dura = A.listArray (Piece 1, Piece 9) [2,4,1,3,3,2,5,7,6]
+  , need = fromLList ((Piece 1, Actor 1),(Piece 9, Actor 5))
+      $ transpose $ map (map toEnum)
+    [[1,1,0,1,0,1,1,0,1]
+    ,[1,1,0,1,1,1,0,1,0]
+    ,[1,1,0,0,0,0,1,1,0]
+    ,[1,0,0,0,1,1,0,0,1]
+    ,[0,0,1,0,1,1,1,1,0]
+    ]
+  }
 
 solve inst = solve_from inst $ upperbound inst
 
@@ -115,12 +170,13 @@ rehearsal p inst bound = do
     <- mfree exists ((Day lo, Piece lo),(Day hi, Piece hi))
   assert $ is_permutation sched
 
-  let days = (Day lo, Day hi)
+  let bound_days = (Day lo, Day hi)
+      days = A.range bound_days
   let width :: Int
       width = maximum $ map (bitwidth . encode) $ A.elems $ dura inst
       bits w = Bits <$> replicateM w exists
   duration :: A.Array Day Bits <-
-    A.array days <$> forM (A.range days) (\d -> (d,) <$> bits width)
+    (A.array bound_days) <$> forM days ( \ d -> (d,) <$> bits width )
   forM_ (assocs sched) $ \  ((d,p),f) ->
     assert $ f ==> ( duration A.! d === encode (dura inst A.! p ))
 
@@ -142,38 +198,66 @@ rehearsal p inst bound = do
 
   let pieces = A.range (Piece lo, Piece hi)
   let actors = A.indices $ cost inst
-      needs p = S.fromList $ filter (\a -> need inst ! (p,a)) actors
-  -- | notation as in paper:
-  -- in case that  needs(j) = needs(i) + { s } ,
-  -- a benchmark for (i,j) is any other piece that needs s.
-  -- for all other cases, the set of benchmarks is empty.
-  let benchmarks i j = do
-        guard $ S.isSubsetOf (needs i) (needs j)
-        case S.toList $ S.difference (needs j) (needs i) of
-          [ s ] ->
-            (s,) <$> filter ( \ b -> b /= j && need inst ! (b,s) ) pieces
-          _ -> []
-      has_benchmarks i = S.fromList $ do
-        j <- pieces
-        (s,b) <- benchmarks i j
-        return s
 
-  forM_ pieces $ \ p ->
-    forM_(has_benchmarks p) $ \ s -> 
-      forM_ days $ \ d ->
-        assert $ not $ sched ! (d,p) && idle ! (d,s)
+  let -- has piece p been rehearsed on day d or before?
+      mono :: Matrix Piece Day Bit
+      mono = fromLList ((Piece lo, Day lo),(Piece hi, Day hi)) $ do
+        p <- pieces
+        return $ do
+          d <- days
+          return $ sched ! (d,p)
+             || if d == Day lo then false else mono ! (p, pred d)
+        
+  let before :: Matrix Piece Piece Bit
+      before =
+        fromLList ((Piece lo, Piece lo),(Piece hi, Piece hi)) $ do
+          p <- pieces
+          return $ do
+            q <- pieces
+            let early xs ys = or $ zipWith (\x y -> x && not y) xs ys
+            return $ early (row mono p) (row mono q)
   
+  forM_ pieces $ \ i ->
+    forM_ pieces $ \ j ->
+      forM_ (benchmarks inst i j) $ \ (s,bs) ->
+        forM_ bs $ \ b -> do
+          assert $ before ! (i,j) ==> before ! (i,b)
+          -- assert $ before ! (j,i) ==> before ! (b,i)
+    
   let total = balanced_sum $ do
         let ((dlo,alo),(dhi,ahi)) = bounds idle
-        a <- A.range (alo,ahi)
+        a <- actors
         return $ (*) (encode $ cost inst A.! a) $ balanced_sum $ do
-          d <- A.range (dlo,dhi)
+          d <- days
           let i = idle ! (d,a)
           return $ nbv $ switch i $ duration A.! d
 
   assert $ total <=? nbv (encode bound)
   
   return (sched, total)
+
+
+-- | notation as in paper:
+-- in case that  needs(j) = needs(i) + { s } ,
+-- a benchmark for (i,j) is any other piece that needs s.
+-- for all other cases, the set of benchmarks is empty.
+benchmarks inst i j = do
+  let actors = A.indices $ cost inst      
+      pieces = A.indices $ dura inst
+      needs p = S.fromList $ filter (\a -> need inst ! (p,a)) actors
+  guard $ S.isSubsetOf (needs i) (needs j)
+  case S.toList $ S.difference (needs j) (needs i) of
+          [ s ] ->
+            [(s, filter ( \ b -> b /= j && need inst ! (b,s) ) pieces)]
+          _ -> []
+
+all_benchmarks inst = do
+  let pieces = A.indices $ dura inst
+  i <- pieces ; j <- pieces
+  (s, bs) <- benchmarks inst i j
+  guard $ not $ null bs
+  return ((i,j),(s,bs))
+
 
 subsequences 0 xs = return []
 subsequences d [] = []
