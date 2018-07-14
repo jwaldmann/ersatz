@@ -128,11 +128,14 @@ solve inst = solve_from inst $ upperbound inst
 
 solve_from inst bound = do
   t <- getNumCapabilities
-  as <- forM (take t [0 ..]) $ \ d ->
-    async $ solve_below inst $ bound - (2^d)
+  as <- forM (take t $ drop 2 fibs) $ \ d ->
+    async $ solve_below inst $ bound - d
   waitAnyCancelJust as >>= \ case
     Nothing -> error "huh"
     Just b -> solve_from inst b
+
+fibs ::  [Integer ]
+fibs = 0 : 1 : zipWith (+) fibs ( tail fibs )
 
 waitAnyCancelJust as = do
   let go [] = return Nothing
@@ -219,10 +222,9 @@ rehearsal p inst bound = do
   
   forM_ pieces $ \ i ->
     forM_ pieces $ \ j ->
-      forM_ (benchmarks inst i j) $ \ (s,bs) ->
-        forM_ bs $ \ b -> do
-          assert $ before ! (i,j) ==> before ! (i,b)
-          -- assert $ before ! (j,i) ==> before ! (b,i)
+      forM_ (benchmarks inst i j) $ \ (s,bs) -> do
+          assert $ before ! (i,j) ==> any (\b -> before ! (i,b)) bs
+          assert $ before ! (j,i) ==> any (\b -> before ! (b,i)) bs
     
   let total = balanced_sum $ do
         let ((dlo,alo),(dhi,ahi)) = bounds idle
