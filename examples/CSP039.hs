@@ -15,12 +15,14 @@ import qualified Ersatz.Counting as C
 import qualified Data.Array as A
 import Data.Ix
 import Data.List (transpose, tails)
+import qualified Data.Set as S
 import Control.Monad (forM)
 import Control.Monad.State
 import Data.Reflection
 import Data.Proxy
 
 import Control.Concurrent.Async
+import GHC.Conc
 
 newtype Day   = Day   Int deriving (Eq, Ord, Ix, Num, Show)
 newtype Piece = Piece Int deriving (Eq, Ord, Ix, Num, Show)
@@ -70,7 +72,9 @@ main = do
 solve inst = solve_from inst $ upperbound inst
 
 solve_from inst bound = do
-  as <- forM [0 .. 3] $ \ d -> async $ solve_below inst $ bound - (3^d)
+  t <- getNumCapabilities
+  as <- forM (take t [0 ..]) $ \ d ->
+    async $ solve_below inst $ bound - (2^d)
   waitAnyCancelJust as >>= \ case
     Nothing -> error "huh"
     Just b -> solve_from inst b
@@ -134,6 +138,30 @@ rehearsal p inst bound = do
             dec = scanr (||) false col
             pay = zipWith (&&) inc dec
         return $ zipWith (&&) pay $ map not col
+
+
+  let pieces = A.range (Piece lo, Piece hi)
+  let actors = A.indices $ cost inst
+      needs p = S.fromList $ filter (\a -> need inst ! (p,a)) actors
+  -- | notation as in paper:
+  -- in case that  needs(j) = needs(i) + { s } ,
+  -- a benchmark for (i,j) is any other piece that needs s.
+  -- for all other cases, the set of benchmarks is empty.
+  let benchmarks i j = do
+        guard $ S.isSubsetOf (needs i) (needs j)
+        case S.toList $ S.difference (needs j) (needs i) of
+          [ s ] ->
+            (s,) <$> filter ( \ b -> b /= j && need inst ! (b,s) ) pieces
+          _ -> []
+      has_benchmarks i = S.fromList $ do
+        j <- pieces
+        (s,b) <- benchmarks i j
+        return s
+
+  forM_ pieces $ \ p ->
+    forM_(has_benchmarks p) $ \ s -> 
+      forM_ days $ \ d ->
+        assert $ not $ sched ! (d,p) && idle ! (d,s)
   
   let total = balanced_sum $ do
         let ((dlo,alo),(dhi,ahi)) = bounds idle
@@ -146,6 +174,11 @@ rehearsal p inst bound = do
   assert $ total <=? nbv (encode bound)
   
   return (sched, total)
+
+subsequences 0 xs = return []
+subsequences d [] = []
+subsequences d (x:xs) =
+  subsequences d xs ++ map (x:) (subsequences (d-1) xs)
 
 balanced_sum :: (Num b, Num (Decoded b), Codec b) => [b] -> b
 balanced_sum xs = balanced_fold (encode 0) id (+) xs
