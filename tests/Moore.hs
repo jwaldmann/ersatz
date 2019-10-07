@@ -1,4 +1,4 @@
--- | graphs n nodes of degree <= d and diameter <= k 
+-- graphs n nodes of degree <= d and diameter <= k 
 -- see http://combinatoricswiki.org/wiki/The_Degree_Diameter_Problem_for_General_Graphs
 
 -- usage: ./Moore d k n [s]
