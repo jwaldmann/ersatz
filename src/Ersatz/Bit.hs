@@ -81,7 +81,6 @@ instance Show Bit where
     showString "Mux " . showsPrec 11 x . showChar ' ' . showsPrec 11 y . showChar ' ' . showsPrec 11 z
   showsPrec d (Not x)  = showParen (d > 10) $ showString "Not " . showsPrec 11 x
   showsPrec d (Var x)  = showParen (d > 10) $ showString "Var " . showsPrec 11 x
-  showsPrec d (Run _)  = showParen (d > 10) $ showString "Run ..."
 
 instance Boolean Bit where
   -- improve the stablemap this way
