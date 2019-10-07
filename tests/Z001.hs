@@ -3,6 +3,7 @@
 {-# language TypeFamilies, ScopedTypeVariables #-}
 {-# language UndecidableInstances #-}
 {-# language NoMonomorphismRestriction #-}
+{-# language LambdaCase #-}
 
 import Prelude hiding ( not, and, or, (&&), (||) )
 
@@ -14,7 +15,7 @@ import Data.List ( transpose )
 import Control.Monad ( replicateM, forM_ )
 
 main = do
-  (Satisfied, Just ms) <- solveWith anyminisat $ do
+  (Satisfied, Just (ms@[a,b])) <- solveWith glucose $ do
     [ Restricted a, Restricted b ]
         :: [ Restricted 5 (NBV 3) ] <- replicateM 2 unknown
     -- assert $ gt (a^2 * b^2) (b^3 * a^3)
@@ -22,6 +23,8 @@ main = do
     assert $ gt (a2 * b2) (b2 * b * a * a2)
     return [a,b]
   forM_ ms print
+  print $ a^2 * b^2
+  print $ b^3 * a^3
 
 unknown_monotone = do
    m <- unknown ; assert $ monotone m ; return m
@@ -78,39 +81,55 @@ gt a b = ge a b && topright a >? topright b
 
 -- | NBV = Non-overflowing Bitvector
 -- Bitvectors of fixed length, with non-overflowing arithmetics
--- (if overflow occurs, constraint is unsatisfiable)
 
-newtype NBV ( n :: Nat ) = NBV Bits
-  deriving ( Show, Equatable, Orderable, HasBits )
+data NBV ( n :: Nat ) =
+  NBV { valid :: Bit, contents :: Bits }
+  deriving ( Show )
+
+invalid = not . valid
+
+instance Equatable (NBV n) where
+  (===) = when_valid (===)
+
+instance Orderable (NBV n) where
+  (<?) = when_valid (<?)
+  (<=?) = when_valid (<=?)
+  (>?) = when_valid (>?)
+  (>=?) = when_valid (>=?)
+
+when_valid f x y = 
+  valid x && valid y && f (contents x) (contents y)
+
 
 instance KnownNat w => Unknown (NBV w) where
   unknown = do
     let n = fromIntegral $ natVal (Proxy :: Proxy w)
-    NBV <$> Bits <$> replicateM n exists
+    NBV true <$> Bits <$> replicateM n exists
 
-positive (NBV (Bits bs)) = or bs
+positive (NBV v (Bits bs)) = v && or bs
 
-nbv n (Bits bs) =
-  let (p : re, post) = splitAt n bs
-  in  NBV $ Bits $ Run ( assert (not $ or post) *> return p )
-                 : re
+nbv v n (Bits bs) =
+  let (pre, post) = splitAt n bs
+  in  NBV (v && nor post) $ Bits pre
 
 instance KnownNat n => Num (NBV n) where
   fromInteger = encode
-  NBV a + NBV b =
-    nbv (fromIntegral (natVal (Proxy :: Proxy n))) $ a + b
-  NBV a * NBV b =
-    nbv (fromIntegral (natVal (Proxy :: Proxy n))) $ a * b
+  NBV v a + NBV w b =
+    nbv (v && w) (fromIntegral (natVal (Proxy :: Proxy n))) $ a + b
+  NBV v a * NBV w b =
+    nbv (v && w) (fromIntegral (natVal (Proxy :: Proxy n))) $ a * b
 
 instance KnownNat n => Codec (NBV n) where
   type Decoded (NBV n) = Integer
-  decode s (NBV bs) = decode s bs
+  decode s (NBV v bs) = decode s v >>= \ case
+    False -> error "invalid FBV"
+    True -> decode s bs
   encode i =
     let n = fromIntegral $ natVal (Proxy :: Proxy n)
         Bits bs = encode i
         (pre, post) = splitAt n bs
     in  if null post
-        then NBV (Bits $ take n $ pre ++ repeat false)
+        then NBV true (Bits $ take n $ pre ++ repeat false)
         else error $ unwords
              [ "cannot encode", show i
              , "with given bit width", show n
