@@ -17,6 +17,8 @@ module Ersatz.Solver.Minisat
   , cryptominisat5
   , cryptominisat5Path
   , anyminisat
+  , glucose, glueminisat
+  , solverPathOptions
   ) where
 
 import Data.ByteString.Builder
@@ -78,19 +80,28 @@ parseSolution s =
 
 -- | 'Solver' for 'SAT' problems that tries to invoke the @cryptominisat5@ executable from the @PATH@
 cryptominisat5 :: MonadIO m => Solver SAT m
-cryptominisat5 = cryptominisat5Path "cryptominisat5"
+cryptominisat5 = solverPathOptions "cryptominisat5" []
 
--- | 'Solver' for 'SAT' problems that tries to invoke a program that takes @cryptominisat5@ compatible arguments.
---
--- The 'FilePath' refers to the path to the executable.
 cryptominisat5Path :: MonadIO m => FilePath -> Solver SAT m
-cryptominisat5Path path problem = liftIO $
+cryptominisat5Path p = solverPathOptions p []
+
+glucose  :: MonadIO m => Solver SAT m
+glucose = solverPathOptions "glucose" [ "-model" ]
+
+glueminisat  :: MonadIO m => Solver SAT m
+glueminisat = solverPathOptions "glueminisat" [ "-show-model" ]
+
+-- | use a solver that reads a file in DIMACS format
+-- and outputs satisfying assignment with "v" lines
+-- The 'FilePath' refers to the path to the executable
+solverPathOptions :: MonadIO m => FilePath -> [String] -> Solver SAT m
+solverPathOptions path options problem = liftIO $
   withTempFiles ".cnf" "" $ \problemPath _ -> do
     withFile problemPath WriteMode $ \fh ->
       hPutBuilder fh (dimacs problem)
 
     (exit, out, _err) <-
-      readProcessWithExitCode path [problemPath] []
+      readProcessWithExitCode path (options <> [problemPath]) [ ]
 
     let sol = parseSolution5 out
 

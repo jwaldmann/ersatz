@@ -1,20 +1,29 @@
+{-# language LambdaCase #-}
+
 module Main where
 
 import Ersatz
-import Control.Monad
+import Control.Monad (replicateM, when)
+import System.Environment (getArgs)
 
-problem :: MonadSAT s m => m (Bits, Bits, Bits)
-problem = do
-  a <- liftM Bits (replicateM 5 exists)
-  b <- liftM Bits (replicateM 5 exists)
-  let c = a * b
+problem :: MonadSAT s m => Integer -> m (Bits, Bits)
+problem c = do
+  let Bits bs = encode c ; w = length bs
+  a <- Bits <$> replicateM w exists
+  b <- Bits <$> replicateM w exists
   assert (a /== encode   1)
   assert (b /== encode   1)
-  assert (c === encode 143)
-  return (a,b,c)
+  assert (a * b === encode c)
+  return (a,b)
 
 main :: IO ()
-main = do
-  putStrLn "Solution:"
-  (Satisfied, Just (a,b,c)) <- solveWith cryptominisat5 problem
+main = getArgs >>= \ case
+  [] -> handle $ 10^10 + 1
+  [s] -> handle $ read s
+
+handle c = do
+  putStrLn $ "factorization of " ++ show c
+  (Satisfied, Just (a,b)) <-
+    solveWith glucose $ problem c
   putStrLn (show a ++ " * " ++ show b ++ " = " ++ show c)
+  when (a * b /= c) $ error "WAT"
