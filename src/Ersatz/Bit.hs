@@ -74,13 +74,13 @@ data Bit
 
 instance Show Bit where
   showsPrec d (And xs)  = showParen (d > 10) $
-    showString "And " . showsPrec 11 xs
+    showString "And " . showsPrec 11 (toList xs)
   showsPrec d (Xor x y) = showParen (d > 10) $
     showString "Xor " . showsPrec 11 x . showChar ' ' . showsPrec 11 y
   showsPrec d (Mux x y z) = showParen (d > 10) $
     showString "Mux " . showsPrec 11 x . showChar ' ' . showsPrec 11 y . showChar ' ' . showsPrec 11 z
   showsPrec d (Not x)  = showParen (d > 10) $ showString "Not " . showsPrec 11 x
-  showsPrec d (Var x)  = showParen (d > 10) $ showString "Var " . showsPrec 11 x
+  showsPrec d (Var x)  = showsPrec 11 x
 
 instance Boolean Bit where
   -- improve the stablemap this way
@@ -94,6 +94,7 @@ instance Boolean Bit where
 
   not (Not c) = c
   not (Var l) = Var (negateLiteral l)
+  not (Mux f t s) = choose (not f) (not t) s
   not c       = Not c
 
   a `xor` Var (Literal (-1)) = a
