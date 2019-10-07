@@ -15,7 +15,7 @@ import Data.List ( transpose )
 import Control.Monad ( replicateM, forM_ )
 
 main = do
-  (Satisfied, Just (ms@[a,b])) <- solveWith glucose $ do
+  (Satisfied, Just (ms@[a,b])) <- solveWith minisat $ do
     [ Restricted a, Restricted b ]
         :: [ Restricted 5 (NBV 3) ] <- replicateM 2 unknown
     -- assert $ gt (a^2 * b^2) (b^3 * a^3)
