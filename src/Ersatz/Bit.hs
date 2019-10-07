@@ -57,13 +57,19 @@ infixr 0 ==>
 
 -- | A 'Bit' provides a reference to a possibly indeterminate boolean
 -- value that can be determined by an external SAT solver.
+
+-- invariants:
+-- * no child of And is And
+-- * no child of Not is Not
+-- * no child of Not is Var
+-- * third arg of Mux isn't Not
+
 data Bit
   = And !(Seq Bit)
   | Xor !Bit !Bit
   | Mux !Bit !Bit !Bit
   | Not !Bit
   | Var !Literal
-  | Run ( forall m s . MonadSAT s m => m Bit )
   deriving (Typeable)
 
 instance Show Bit where
@@ -95,10 +101,10 @@ instance Boolean Bit where
   Var (Literal (-1)) `xor` b = b
   a `xor` Var (Literal 1) = not a
   Var (Literal 1) `xor` b = not b
-  -- following 3 clauses might enable some AIG magic
-  Not a `xor` Not b = Xor a b
-  a `xor` Not b = Not (Xor a b)
-  Not a `xor` b = Not (Xor a b)
+
+  Not a `xor` Not b = xor a b
+  a `xor` Not b = not (xor a b)
+  Not a `xor` b = not (xor a b)
   a `xor` b    = Xor a b
 
   and = Foldable.foldl' (&&) true
@@ -142,7 +148,6 @@ instance Codec Bit where
             decode sol $ if p then ct else cf
           Not c'  -> not <$> decode sol c'
           Var l   -> decode sol l
-          Run _ -> mzero
     where
       andMaybeBools :: [Maybe Bool] -> Maybe Bool
       andMaybeBools mbs
@@ -162,10 +167,6 @@ instance Codec Bit where
 -- of the current problem.
 assert :: MonadSAT s m => Bit -> m ()
 assert (And bs) = Foldable.for_ bs assert
--- the following (when switched on, False => True) produces extra clauses, why?
-assert (Not (And bs)) | False = do
-  ls <- Traversable.for bs runBit
-  assertFormula $ fromClause $ foldMap (fromLiteral . negateLiteral) ls
 assert b = do
   l <- runBit b
   assertFormula (formulaLiteral l)
@@ -174,7 +175,6 @@ assert b = do
 runBit :: MonadSAT s m => Bit -> m Literal
 runBit (Not c) = negateLiteral `fmap` runBit c
 runBit (Var l) = return l
-runBit (Run action) = action >>= runBit
 runBit b = generateLiteral b $ \out ->
   assertFormula =<< case b of
     And bs    -> formulaAnd out `fmap` mapM runBit (toList bs)
