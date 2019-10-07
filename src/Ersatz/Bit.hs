@@ -183,7 +183,6 @@ runBit b = generateLiteral b $ \out ->
     -- Already handled above but GHC doesn't realize it.
     Not _ -> error "Unreachable"
     Var _ -> error "Unreachable"
-    Run _ -> error "Unreachable"
 
 class GBoolean f where
   gbool :: Bool -> f a
