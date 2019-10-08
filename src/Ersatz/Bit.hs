@@ -97,7 +97,7 @@ instance Boolean Bit where
 
   not (Not c) = c
   not (Var l) = Var (negateLiteral l)
-  not (Mux f t s) = choose (not f) (not t) s
+  -- not (Mux f t s) = choose (not f) (not t) s
   not c       = Not c
 
   a `xor` Var (Literal (-1)) = a
@@ -105,10 +105,11 @@ instance Boolean Bit where
   a `xor` Var (Literal 1) = not a
   Var (Literal 1) `xor` b = not b
 
+  a `xor` b | equals a b = false
+  a `xor` b | equals a (not b) = true
   Not a `xor` Not b = xor a b
   a `xor` Not b = not (xor a b)
   Not a `xor` b = not (xor a b)
-  a `xor` b | equals a b = false
   a `xor` b    = Xor a b
 
   and = Foldable.foldl' (&&) true
@@ -129,6 +130,7 @@ and2 _ b@(Var (Literal (-1))) = b
 and2 a (Var (Literal 1)) = a
 and2 (Var (Literal 1)) b = b
 and2 a b | equals a b = a
+and2 a b | equals a (not b) = false
 and2 (And as) (And bs) = And (as >< bs)
 and2 (And as) b      = And (as |> b)
 and2 a (And bs) = And (a <| bs)
