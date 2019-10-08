@@ -17,7 +17,7 @@ module Ersatz.Solver.Minisat
   , cryptominisat5
   , cryptominisat5Path
   , anyminisat
-  , glucose, glueminisat
+  , glucose, glueminisat, cadical
   , solverPathOptions
   ) where
 
@@ -90,6 +90,9 @@ glucose = solverPathOptions "glucose" [ "-model" ]
 
 glueminisat  :: MonadIO m => Solver SAT m
 glueminisat = solverPathOptions "glueminisat" [ "-show-model" ]
+
+cadical  :: MonadIO m => Solver SAT m
+cadical = solverPathOptions "cadical" [ "--sat" ]
 
 -- | use a solver that reads a file in DIMACS format
 -- and outputs satisfying assignment with "v" lines
