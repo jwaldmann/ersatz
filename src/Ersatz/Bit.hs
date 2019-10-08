@@ -60,8 +60,9 @@ infixr 0 ==>
 
 -- invariants:
 -- * no child of And is And
--- * no child of Not is Not
--- * no child of Not is Var
+-- * each And has at least two children
+-- * the child of Not is not Not, Var, Xor, Mux
+-- * no child of Xor is Not
 -- * third arg of Mux isn't Not
 
 data Bit
@@ -105,6 +106,7 @@ instance Boolean Bit where
   Not a `xor` Not b = xor a b
   a `xor` Not b = not (xor a b)
   Not a `xor` b = not (xor a b)
+  a `xor` b | equals a b = false
   a `xor` b    = Xor a b
 
   and = Foldable.foldl' (&&) true
@@ -116,6 +118,7 @@ instance Boolean Bit where
   choose f _ (Var (Literal (-1))) = f
   choose _ t (Var (Literal 1))    = t
   choose t f (Not s) = choose f t s
+  choose t f s | equals t f = t
   choose f t s = Mux f t s
 
 and2 :: Bit -> Bit -> Bit
@@ -123,10 +126,15 @@ and2 a@(Var (Literal (-1))) _ = a
 and2 _ b@(Var (Literal (-1))) = b
 and2 a (Var (Literal 1)) = a
 and2 (Var (Literal 1)) b = b
+and2 a b | equals a b = a
 and2 (And as) (And bs) = And (as >< bs)
 and2 (And as) b      = And (as |> b)
 and2 a (And bs) = And (a <| bs)
 and2 a b = And (a <| b <| Seq.empty)
+
+-- |  under-approximation of equality
+equals (Var x) (Var y) | x == y = true
+equals _ _ = false
 
 instance Variable Bit where
   literally = fmap Var . literally
