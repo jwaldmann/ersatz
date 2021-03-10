@@ -43,6 +43,8 @@ module Ersatz.Problem
   , QDIMACS(..)
   , WDIMACS(..)
   , dimacs, qdimacs, wdimacs
+  -- * Polarity
+  , Polarity(..)
   ) where
 
 import Data.ByteString.Builder
@@ -89,23 +91,36 @@ type MonadQSAT s m = (HasQSAT s, MonadState s m)
 -- SAT Problems
 ------------------------------------------------------------------------------
 
+data Polarity = Negative | Positive | Both
+  deriving (Eq, Show)
+
+isSubsumedBy :: Polarity -> Polarity -> Bool
+isSubsumedBy _ Both = True
+isSubsumedBy p q = p == q
+
 data SAT = SAT
-  { _lastAtom  :: {-# UNPACK #-} !Int      -- ^ The id of the last atom allocated
-  , _formula   :: !Formula                 -- ^ a set of clauses to assert
-  , _stableMap :: !(HashMap (StableName ()) Literal)  -- ^ a mapping used during 'Bit' expansion
+  { _lastAtom  :: {-# UNPACK #-} !Int
+  -- ^ The id of the last atom allocated
+  , _formula   :: !Formula
+  -- ^ a set of clauses to assert
+  , _stableMap :: !(HashMap (StableName ()) (Polarity,Literal))
+  -- ^ a mapping used during 'Bit' expansion
   } deriving Typeable
 
 class HasSAT s where
   sat :: Lens' s SAT
 
   lastAtom :: Lens' s Int
-  lastAtom f = sat $ \ (SAT a b c) -> fmap (\a' -> SAT a' b c) (f a)
+  lastAtom f = sat $ \ (SAT a b c) ->
+    fmap (\a' -> SAT a' b c) (f a)
 
   formula :: Lens' s Formula
-  formula f = sat $ \ (SAT a b c) -> fmap (\b' -> SAT a b' c) (f b)
+  formula f = sat $ \ (SAT a b c) ->
+    fmap (\b' -> SAT a b' c) (f b)
 
-  stableMap :: Lens' s (HashMap (StableName ()) Literal)
-  stableMap f = sat $ \ (SAT a b c) -> SAT a b <$> f c
+  stableMap :: Lens' s (HashMap (StableName ()) (Polarity,Literal))
+  stableMap f = sat $ \ (SAT a b c) ->
+    fmap (\ c' -> SAT a b c') (f c)
 
 instance HasSAT SAT where
   sat = id
@@ -144,14 +159,23 @@ assertFormula :: MonadSAT s m => Formula -> m ()
 assertFormula xs = formula <>= xs
 {-# INLINE assertFormula #-}
 
-generateLiteral :: MonadSAT s m => a -> (Literal -> m ()) -> m Literal
-generateLiteral a f = do
+-- | @p@ is the polarity that we want.
+-- The continuation is called if stablename does not exist at all,
+-- or if it exists but is missing the polarity that we want.
+generateLiteral
+  :: MonadSAT s m
+  => Polarity -> a -> (Literal -> m ()) -> m Literal
+generateLiteral want a f = do
   let sn = unsafePerformIO (makeStableName' a)
   use (stableMap.at sn) >>= \ ml -> case ml of
-    Just l -> return l
+    Just (have,l) -> do
+      when (not $ want `isSubsumedBy` have) $ do
+        stableMap.at sn ?= (Both, l)
+        f l
+      return l  
     Nothing -> do
       l <- literalExists
-      stableMap.at sn ?= l
+      stableMap.at sn ?= (want, l)
       f l
       return l
 {-# INLINE generateLiteral #-}

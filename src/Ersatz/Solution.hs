@@ -40,7 +40,7 @@ solutionFrom litMap qbf = Solution lookupLit lookupSN
                 | otherwise = not <$> IntMap.lookup (-i) litMap
       where i = literalId l
 
-    lookupSN sn = lookupLit =<< HashMap.lookup sn snMap
+    lookupSN sn = (lookupLit . snd) =<< HashMap.lookup sn snMap
 
     snMap = qbf^.stableMap
 

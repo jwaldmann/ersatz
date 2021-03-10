@@ -161,21 +161,26 @@ instance Codec Bit where
 -- | Assert claims that 'Bit' must be 'true' in any satisfying interpretation
 -- of the current problem.
 assert :: MonadSAT s m => Bit -> m ()
+{-
 assert (And bs) = Foldable.for_ bs assert
 -- the following (when switched on) produces extra clauses, why?
 assert (Not (And bs)) | () /= () = do
   ls <- Traversable.for bs runBit
   assertFormula $ fromClause $ foldMap (fromLiteral . negateLiteral) ls
+-}
 assert b = do
   l <- runBit b
   assertFormula (formulaLiteral l)
 
 -- | Convert a 'Bit' to a 'Literal'.
 runBit :: MonadSAT s m => Bit -> m Literal
-runBit (Not c) = negateLiteral `fmap` runBit c
-runBit (Var l) = return l
-runBit (Run action) = action >>= runBit
-runBit b = generateLiteral b $ \out ->
+runBit b = runBitPol Both b
+
+runBitPol :: MonadSAT s m => Polarity -> Bit -> m Literal
+runBitPol p (Not c) = negateLiteral `fmap` runBit c
+runBitPol p (Var l) = return l
+runBitPol p (Run action) = action >>= runBit
+runBitPol p b = generateLiteral p b $ \out ->
   assertFormula =<< case b of
     And bs    -> formulaAnd out `fmap` mapM runBit (toList bs)
     Xor x y   -> liftM2 (formulaXor out) (runBit x) (runBit y)
