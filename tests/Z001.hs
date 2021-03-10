@@ -14,14 +14,15 @@ import Data.List ( transpose )
 import Control.Monad ( replicateM, forM_ )
 
 main = do
-  (Satisfied, Just ms) <- solveWith anyminisat $ do
+  (Satisfied, Just [ a, b]) <-
+   solveWith minisat $ do
     [ Restricted a, Restricted b ]
         :: [ Restricted 5 (NBV 3) ] <- replicateM 2 unknown
     -- assert $ gt (a^2 * b^2) (b^3 * a^3)
     let a2 = a^2 ; b2 = b^2
     assert $ gt (a2 * b2) (b2 * b * a * a2)
     return [a,b]
-  forM_ ms print
+  forM_ [a,b,a^2*b^2-b^3*a^3] print
 
 unknown_monotone = do
    m <- unknown ; assert $ monotone m ; return m
@@ -57,11 +58,13 @@ instance (KnownNat dim, Unknown a) => Unknown (Matrix dim a) where
 instance Num a => Num (Matrix dim a) where
   Matrix xss + Matrix yss
     = Matrix $ zipWith (zipWith (+)) xss yss
+  Matrix xss - Matrix yss
+    = Matrix $ zipWith (zipWith (-)) xss yss
   Matrix xss * Matrix yss
     = Matrix $ for xss $ \ row ->
         for (transpose yss) $ \ col ->
           sum $ zipWith (*) row col
-  (-)         = error "(-) not implemented for Matrix"
+
   abs         = error "abs not implemented for Matrix"
   signum      = error "signum not implemented for Matrix"
   fromInteger = error "fromInteger not implemented for Matrix"
