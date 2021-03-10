@@ -101,8 +101,12 @@ instance Boolean Bit where
   Not a `xor` b = Not (Xor a b)
   a `xor` b    = Xor a b
 
-  and = Foldable.foldl' (&&) true
-  or  = not . all not . toList
+  and = 
+    -- NOTE: don't do this:  And . Seq.fromList . toList
+    -- because our method avoids nested And
+    Foldable.foldl' (&&) true
+  or  = -- not . all not
+    Foldable.foldl' (||) false
 
   all p = Foldable.foldl' (\res b -> res && p b) true
   any p = not . all (not . p)
@@ -161,13 +165,10 @@ instance Codec Bit where
 -- | Assert claims that 'Bit' must be 'true' in any satisfying interpretation
 -- of the current problem.
 assert :: MonadSAT s m => Bit -> m ()
-{-
 assert (And bs) = Foldable.for_ bs assert
--- the following (when switched on) produces extra clauses, why?
-assert (Not (And bs)) | () /= () = do
-  ls <- Traversable.for bs runBit
+assert (Not (And bs)) = do
+  ls <- Traversable.for bs $ runBitPol Negative
   assertFormula $ fromClause $ foldMap (fromLiteral . negateLiteral) ls
--}
 assert b = do
   l <- runBitPol Positive b
   assertFormula (formulaLiteral l)
@@ -179,7 +180,7 @@ runBit b = runBitPol Both b
 -- | Convert a 'Bit' b to a literal l (and emit clauses)
 -- if polarity is Positive, then l implies b.
 -- if polarity is Negative, then b implies l.
--- if polarity is Both, then l is equivalent to b
+-- if polarity is Both, then l is equivalent to b.
 runBitPol :: MonadSAT s m => Polarity -> Bit -> m Literal
 runBitPol p (Not c) = negateLiteral `fmap` runBitPol (opposite p) c
 runBitPol p (Var l) = return l
@@ -187,9 +188,10 @@ runBitPol p (Run action) = action >>= runBitPol p
 runBitPol p b = generateLiteral p b $ \ need out ->
   assertFormula =<< case b of
     And bs    ->
-      -- let need = Both in
       formulaAndPol need out `fmap` mapM (runBitPol need) (toList bs)
+    -- polarity does not help for Xor:  
     Xor x y   -> liftM2 (formulaXor out) (runBit x) (runBit y)
+    -- polarity could be used? not in the discriminant (third arg)
     Mux x y p -> liftM3 (formulaMux out) (runBit x) (runBit y) (runBit p)
 
 #if __GLASGOW_HASKELL__ < 900

@@ -111,7 +111,7 @@ class HasSAT s where
 
   stableMap :: Lens' s (HashMap (StableName ()) (Polarity,Literal))
   stableMap f = sat $ \ (SAT a b c) ->
-    fmap (\ c' -> SAT a b c') (f c)
+    fmap (\c' -> SAT a b c') (f c)
 
 instance HasSAT SAT where
   sat = id
