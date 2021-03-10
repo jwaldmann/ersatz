@@ -169,20 +169,26 @@ assert (Not (And bs)) | () /= () = do
   assertFormula $ fromClause $ foldMap (fromLiteral . negateLiteral) ls
 -}
 assert b = do
-  l <- runBit b
+  l <- runBitPol Positive b
   assertFormula (formulaLiteral l)
 
--- | Convert a 'Bit' to a 'Literal'.
+-- | Convert a 'Bit' to an equivalent 'Literal'.
 runBit :: MonadSAT s m => Bit -> m Literal
 runBit b = runBitPol Both b
 
+-- | Convert a 'Bit' b to a literal l (and emit clauses)
+-- if polarity is Positive, then l implies b.
+-- if polarity is Negative, then b implies l.
+-- if polarity is Both, then l is equivalent to b
 runBitPol :: MonadSAT s m => Polarity -> Bit -> m Literal
-runBitPol p (Not c) = negateLiteral `fmap` runBit c
+runBitPol p (Not c) = negateLiteral `fmap` runBitPol (opposite p) c
 runBitPol p (Var l) = return l
-runBitPol p (Run action) = action >>= runBit
-runBitPol p b = generateLiteral p b $ \out ->
+runBitPol p (Run action) = action >>= runBitPol p
+runBitPol p b = generateLiteral p b $ \ need out ->
   assertFormula =<< case b of
-    And bs    -> formulaAnd out `fmap` mapM runBit (toList bs)
+    And bs    ->
+      -- let need = Both in
+      formulaAndPol need out `fmap` mapM (runBitPol need) (toList bs)
     Xor x y   -> liftM2 (formulaXor out) (runBit x) (runBit y)
     Mux x y p -> liftM3 (formulaMux out) (runBit x) (runBit y) (runBit p)
 

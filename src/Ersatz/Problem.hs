@@ -43,8 +43,6 @@ module Ersatz.Problem
   , QDIMACS(..)
   , WDIMACS(..)
   , dimacs, qdimacs, wdimacs
-  -- * Polarity
-  , Polarity(..)
   ) where
 
 import Data.ByteString.Builder
@@ -90,13 +88,6 @@ type MonadQSAT s m = (HasQSAT s, MonadState s m)
 ------------------------------------------------------------------------------
 -- SAT Problems
 ------------------------------------------------------------------------------
-
-data Polarity = Negative | Positive | Both
-  deriving (Eq, Show)
-
-isSubsumedBy :: Polarity -> Polarity -> Bool
-isSubsumedBy _ Both = True
-isSubsumedBy p q = p == q
 
 data SAT = SAT
   { _lastAtom  :: {-# UNPACK #-} !Int
@@ -162,21 +153,23 @@ assertFormula xs = formula <>= xs
 -- | @p@ is the polarity that we want.
 -- The continuation is called if stablename does not exist at all,
 -- or if it exists but is missing the polarity that we want.
+-- The first argument of the continuation
+-- is the polarity that we still need to generate
 generateLiteral
   :: MonadSAT s m
-  => Polarity -> a -> (Literal -> m ()) -> m Literal
+  => Polarity -> a -> (Polarity -> Literal -> m ()) -> m Literal
 generateLiteral want a f = do
   let sn = unsafePerformIO (makeStableName' a)
   use (stableMap.at sn) >>= \ ml -> case ml of
     Just (have,l) -> do
       when (not $ want `isSubsumedBy` have) $ do
         stableMap.at sn ?= (Both, l)
-        f l
+        f (opposite have) l
       return l  
     Nothing -> do
       l <- literalExists
       stableMap.at sn ?= (want, l)
-      f l
+      f want l
       return l
 {-# INLINE generateLiteral #-}
 

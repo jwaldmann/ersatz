@@ -22,8 +22,10 @@ module Ersatz.Internal.Formula
   -- * Formulas
   , Formula(..)
   , formulaEmpty, formulaLiteral, fromClause
-  , formulaNot, formulaAnd, formulaOr, formulaXor, formulaMux
+  , formulaNot, formulaAnd, formulaAndPol, formulaOr, formulaXor, formulaMux
   , formulaFAS, formulaFAC
+  -- * Polarity
+  , Polarity(..), opposite, isSubsumedBy
   ) where
 
 import Data.IntSet (IntSet)
@@ -44,6 +46,18 @@ import Data.Monoid (Monoid(..))
 #if !(MIN_VERSION_base(4,11,0))
 import Data.Semigroup (Semigroup(..))
 #endif
+
+data Polarity = Negative | Positive | Both
+  deriving (Eq, Show)
+
+isSubsumedBy :: Polarity -> Polarity -> Bool
+isSubsumedBy _ Both = True
+isSubsumedBy p q = p == q
+
+opposite :: Polarity -> Polarity
+opposite Negative = Positive
+opposite Positive = Negative
+opposite Both = Both
 
 ------------------------------------------------------------------------------
 -- Clauses
@@ -141,10 +155,20 @@ formulaAnd :: Literal    -- ^ Output
            -> [Literal]  -- ^ Inputs
            -> Formula
 {-# inlineable formulaAnd #-}
-formulaAnd (Literal out) inpLs = formulaFromList cls
+formulaAnd = formulaAndPol Both
+
+{-# inlineable formulaAndPol #-}
+formulaAndPol pol (Literal out) inpLs = formulaFromList cls
   where
-    cls = (out : map negate inps) : map (\inp -> [-out, inp]) inps
+    cls = case pol of
+      Negative -> clsNeg
+      Positive -> clsPos
+      Both -> clsNeg <> clsPos
+    clsNeg = [ out : map negate inps ]
+    clsPos = map (\inp -> [-out, inp]) inps
     inps = map literalId inpLs
+
+
 
 -- | The boolean /or/ operation
 --
