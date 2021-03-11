@@ -22,11 +22,15 @@ module Ersatz.Solver.Minisat
 import Data.ByteString.Builder
 import Control.Exception (IOException, handle)
 import Control.Monad.IO.Class
+import Control.Monad (when)
+import Control.Lens
+import Data.Foldable (toList)
 import Data.IntMap (IntMap)
 import Ersatz.Problem
 import Ersatz.Solution
 import Ersatz.Solver.Common
 import qualified Data.IntMap.Strict as IntMap
+import qualified Data.Map.Strict as M
 import System.IO
 import System.Process (readProcessWithExitCode)
 
@@ -52,6 +56,9 @@ minisatPath :: MonadIO m => FilePath -> Solver SAT m
 minisatPath path problem = liftIO $
   withTempFiles ".cnf" "" $ \problemPath solutionPath -> do
     withFile problemPath WriteMode $ \fh -> do
+      when True $hPutStrLn stderr $ show $ M.fromListWith (+) $ do
+        (pol,_) <- toList $ problem ^. stableMap
+        return (pol,1::Int)
       hPutBuilder fh (dimacs problem)
     (exit, _out, _err) <-
       readProcessWithExitCode path [problemPath, solutionPath] []

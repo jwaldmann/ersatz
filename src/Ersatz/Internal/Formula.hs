@@ -48,7 +48,7 @@ import Data.Semigroup (Semigroup(..))
 #endif
 
 data Polarity = Negative | Positive | Both
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 isSubsumedBy :: Polarity -> Polarity -> Bool
 isSubsumedBy _ Both = True
@@ -157,6 +157,10 @@ formulaAnd :: Literal    -- ^ Output
 {-# inlineable formulaAnd #-}
 formulaAnd = formulaAndPol Both
 
+formulaAndPol :: Polarity
+           -> Literal    -- ^ Output
+           -> [Literal]  -- ^ Inputs
+           -> Formula
 {-# inlineable formulaAndPol #-}
 formulaAndPol pol (Literal out) inpLs = formulaFromList cls
   where
@@ -289,6 +293,7 @@ formulaMux (Literal x) (Literal f) (Literal t) (Literal s) =
           , [-s,  t, -x], [ s,  f, -x], {- red -} [ t,  f, -x]
           ]
 
+-- | full adder, sum bit
 formulaFAS :: Literal -> Literal -> Literal -> Literal -> Formula
 formulaFAS (Literal x) (Literal a) (Literal b) (Literal c) =
   formulaFromList cls
@@ -300,6 +305,7 @@ formulaFAS (Literal x) (Literal a) (Literal b) (Literal c) =
       , [-a, -b,  c, -x], [ a,  b, -c, x]
       ]
 
+-- | full adder, carry bit
 formulaFAC :: Literal -> Literal -> Literal -> Literal -> Formula
 formulaFAC (Literal x) (Literal a) (Literal b) (Literal c) =
   formulaFromList cls
