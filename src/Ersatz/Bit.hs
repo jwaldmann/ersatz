@@ -185,14 +185,18 @@ runBitPol :: MonadSAT s m => Polarity -> Bit -> m Literal
 runBitPol p (Not c) = negateLiteral `fmap` runBitPol (opposite p) c
 runBitPol p (Var l) = return l
 runBitPol p (Run action) = action >>= runBitPol p
-runBitPol p b = generateLiteral p b $ \ need out ->
-  assertFormula =<< case b of
-    And bs    ->
-      formulaAndPol need out `fmap` mapM (runBitPol need) (toList bs)
+runBitPol p b = generateLiteral p b $ \ need out -> case b of
+    And bs    -> do
+      assertFormula =<< formulaAndPol need out `fmap` mapM (runBitPol need) (toList bs)
+      return need
     -- polarity does not help for Xor:  
-    Xor x y   -> liftM2 (formulaXor out) (runBit x) (runBit y)
+    Xor x y   -> do
+      assertFormula =<< liftM2 (formulaXor out) (runBit x) (runBit y)
+      return Both
     -- polarity could be used? not in the discriminant (third arg)
-    Mux x y p -> liftM3 (formulaMux out) (runBit x) (runBit y) (runBit p)
+    Mux x y p -> do
+      assertFormula =<< liftM3 (formulaMux out) (runBit x) (runBit y) (runBit p)
+      return Both
 
 #if __GLASGOW_HASKELL__ < 900
     -- Already handled above, but pre-9.0 GHCs don't realize this.

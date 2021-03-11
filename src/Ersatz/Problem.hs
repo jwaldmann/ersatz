@@ -154,22 +154,30 @@ assertFormula xs = formula <>= xs
 -- The continuation is called if stablename does not exist at all,
 -- or if it exists but is missing the polarity that we want.
 -- The first argument of the continuation
--- is the polarity that we still need to generate
+-- is the polarity that we still need to generate.
+-- The result of the continuation is the polarity
+-- that we actually generated, as it may be larger,
+-- e.g., for XOR we will generate an equivalent literal.
 generateLiteral
   :: MonadSAT s m
-  => Polarity -> a -> (Polarity -> Literal -> m ()) -> m Literal
+  => Polarity
+  -> a
+  -> (Polarity -> Literal -> m Polarity)
+  -> m Literal
 generateLiteral want a f = do
   let sn = unsafePerformIO (makeStableName' a)
   use (stableMap.at sn) >>= \ ml -> case ml of
     Just (have,l) -> do
       when (not $ want `isSubsumedBy` have) $ do
         stableMap.at sn ?= (Both, l)
-        f (opposite have) l
+        void $ f (opposite have) l
       return l  
     Nothing -> do
       l <- literalExists
-      stableMap.at sn ?= (want, l)
-      f want l
+      -- do we need to put l in the stablemap here?
+      built <- f want l
+      -- or is it enough here (when we know the actual polarity)
+      stableMap.at sn ?= (built, l)
       return l
 {-# INLINE generateLiteral #-}
 
