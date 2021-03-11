@@ -12,9 +12,11 @@ main = do
     [ n ] -> mainf ( read n)
     [] -> mainf 50000
 
+-- | will produce satisfiable CNF with variables g_1, .. g_n
+-- and constraints  g_i /= g_{i+1}
 mainf n = do
   putStrLn $ unwords [ "n",  show n ]
-  (s, mgs) <- solveWith anyminisat $ do
+  (s, mgs) <- solveWith minisat $ do
       gs <- replicateM n exists
       forM_ (zip gs $ tail gs) $ \ (x,y) -> assert ( x /== y )
       return (gs :: [Bit])
