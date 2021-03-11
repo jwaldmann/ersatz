@@ -56,9 +56,15 @@ minisatPath :: MonadIO m => FilePath -> Solver SAT m
 minisatPath path problem = liftIO $
   withTempFiles ".cnf" "" $ \problemPath solutionPath -> do
     withFile problemPath WriteMode $ \fh -> do
-      when True $hPutStrLn stderr $ show $ M.fromListWith (+) $ do
-        (pol,_) <- toList $ problem ^. stableMap
-        return (pol,1::Int)
+      when False $ do
+        hPutStrLn stderr $ ("Tseitin map: " <>) $
+          show $ M.toList $ M.fromListWith (+) $ do
+            (pol,_) <- toList $ problem ^. stableMap
+            return (pol,1::Int)
+        hPutStrLn stderr $ unwords
+          [ "variables:", show $ dimacsNumVariables problem
+          , "clauses:",  show $ length $ dimacsClauses problem
+          ]
       hPutBuilder fh (dimacs problem)
     (exit, _out, _err) <-
       readProcessWithExitCode path [problemPath, solutionPath] []

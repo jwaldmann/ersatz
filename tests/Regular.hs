@@ -9,9 +9,9 @@ import Control.Monad (replicateM, when)
 
 main = getArgs >>= \ case
   [] -> do
-    mainFor  1 25
-    mainFor  3 25
-    mainFor  4 25
+    mainFor   1 25
+    mainFor   3 25
+    mainFor  12 25
   [d, n] -> mainFor (read d) (read n)
 
 -- a n-by-n matrix where
