@@ -190,7 +190,7 @@ runBit b = runBitPol Both b
 -- if polarity is Both, then l is equivalent to b.
 runBitPol :: MonadSAT s m => Polarity -> Bit -> m Literal
 runBitPol p (Not c) = negateLiteral `fmap` runBitPol (opposite p) c
-runBitPol p (Var l) = return l
+runBitPol _ (Var l) = return l
 runBitPol p (Run action) = action >>= runBitPol p
 runBitPol p b = generateLiteral p b $ \ need out -> case b of
     And bs    -> do
