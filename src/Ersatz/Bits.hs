@@ -269,7 +269,10 @@ instance Orderable Bits where
 orderHelper :: Bit -> [Bit] -> [Bit] -> Bit
 orderHelper c0 xs ys = foldl aux c0 (zipWithBits (,) xs ys)
     where
-    aux c (x,y) = c && x === y || x <? y
+      -- for c = true and y = true  we want result true,
+      -- this appears in at-most-one
+      -- aux c (x,y) = c && x === y || x <? y
+      aux c (x,y) = c && (x <=? y) || (x <? y)
 
 instance Codec Bits where
   type Decoded Bits = Integer

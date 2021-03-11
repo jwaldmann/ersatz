@@ -12,7 +12,7 @@ and an overflow indicator bit.
 
 -}
 
-{-# language KindSignatures, DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes #-}
+{-# language KindSignatures, DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes, LambdaCase, TypeFamilies #-}
 
 module Ersatz.Counting where
 
@@ -70,13 +70,28 @@ leqSumBits x@(B.Bits xs) bs =
     let b = sumBits @w bs
     in  x <=? B.Bits (contents b) || overflow b  
 
+-- | Numbers with bounded bit width and overflow detection.
+-- Semantics for arithmetical operations
+-- (currently, only addition is implemented)
+-- if no overflow, then contents is correct.
+-- if overflow, then contents is arbvitrary.
+-- Application: for bit width 1, the (only) contents bit
+-- of the sum is the Or (instead of the Xor) of inputs.
+-- This should help propagation in the at-most-one constraint.
 data Bits (w :: Nat) =
   Bits { contents :: [Bit] -- ^ will have length <= w
        , overflow :: Bit
        }
 
-fromBits :: forall w . KnownNat w => [Bit] -> Bits w
-fromBits bs =
+instance KnownNat w => Codec (Bits w) where
+  type Decoded (Bits w) = Integer
+  decode s b = decode s (overflow b) >>= \ case
+    False -> decode s (B.Bits $ contents b)
+    True -> error "overflow"
+  encode n = fromBits $ encode n
+
+fromBits :: forall w . KnownNat w => B.Bits -> Bits w
+fromBits (B.Bits bs) =
   let w = fromIntegral $ natVal @w undefined
       (small, large) = splitAt w bs
   in  Bits { contents = small
@@ -85,13 +100,24 @@ fromBits bs =
 
 instance KnownNat w => Num (Bits w) where
   a + b =
-    let B.Bits cs = B.Bits (contents a) + B.Bits (contents b)
-        c = fromBits @w cs
-    in  c { overflow = overflow a || overflow b || overflow c }    
+    let w = fromIntegral $ natVal @w undefined
+    in  if w == 1
+        then let ha = head $ contents a <> [false]
+                 hb = head $ contents b <> [false]
+             in Bits { contents = [ ha || hb ]
+                     , overflow =
+                       overflow a || overflow b || (ha && hb)
+                     }
+        else
+          let c = fromBits @w
+               $ (B.Bits $ contents a) + (B.Bits $ contents b)
+          in  c { overflow =
+                  overflow a || overflow b || overflow c
+                }
 
 sumBits :: KnownNat w => [Bit] -> Bits w
-sumBits [] = fromBits []
-sumBits [b] = fromBits [b]
+sumBits [] = fromBits $ B.Bits []
+sumBits [b] = fromBits $ B.Bits [b]
 sumBits bs =
   let (pre, post) = splitAt (div (length bs) 2) bs
   in  sumBits pre + sumBits post
