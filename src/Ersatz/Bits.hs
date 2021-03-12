@@ -19,6 +19,7 @@ module Ersatz.Bits
   -- * Variable length bit vectors
   , Bits(Bits)
   , HasBits(..)
+  , FromBit(..)
   , isEven
   , isOdd
   , sumBit
@@ -395,6 +396,9 @@ instance HasBits Bit8 where
 
 instance HasBits Bits where
   bits = id
+
+class FromBit a where
+  fromBit :: Bit -> a
 
 mulBits :: Bits -> Bits -> Bits
 mulBits (Bits xs) (Bits ys0)

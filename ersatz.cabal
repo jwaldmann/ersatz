@@ -202,6 +202,8 @@ library
     Ersatz.Solver.Minisat
     Ersatz.Variable
     Ersatz.Counting
+    Ersatz.Number.Unary
+    Ersatz.Number.Binary
     Ersatz.Relation
 
   other-modules:
