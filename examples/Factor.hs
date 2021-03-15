@@ -34,10 +34,10 @@ main = getArgs >>= \ case
  [] -> do
    mainFor 1000000000001
    -- Bits: variables: 9457 clauses: 33485
-   -- Binary: variables: 6455 clauses: 25156
+   -- Binary: variables: 7243 clauses: 26033
    mainFor 11111111111
    -- Bits: variables: 6811 clauses: 24163
-   -- Binary: variables: 4629 clauses: 18030
+   -- Binary: variables: 5198 clauses: 18676
  [s] -> mainFor $ read s
 
 mainFor :: Integer -> IO ()

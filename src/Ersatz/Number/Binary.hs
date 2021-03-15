@@ -100,8 +100,8 @@ instance forall w . KnownNat w => Num (Binary w) where
         c = multiply w (contents a) (contents b)
         iszero x = all not $ contents x
     in  Binary { contents = take w c
-               , overflow = -- not (iszero a && iszero b)
-                       ( overflow a || overflow b || c !! w )
+               , overflow = not (iszero a && iszero b)
+                     &&  ( overflow a || overflow b || c !! w )
                }
 
 -- | compute binary representation of product,
@@ -116,6 +116,7 @@ reduce
   :: (Ord n, Enum n, Num n)
   => n -> M.Map n (Q.Seq Bit) -> [Bit]
 reduce w m = case M.minViewWithKey m of
+  Nothing -> [false]
   Just ((k,s), m') ->
     if k < w
     then
