@@ -98,10 +98,11 @@ instance forall w . KnownNat w => Num (Binary w) where
   a * b = 
     let w = fromIntegral $ natVal @w undefined
         c = multiply w (contents a) (contents b)
+        o = if length c <= w then false else c !! w
         iszero x = all not $ contents x
     in  Binary { contents = take w c
                , overflow = not (iszero a && iszero b)
-                     &&  ( overflow a || overflow b || c !! w )
+                     &&  ( overflow a || overflow b || o )
                }
 
 -- | compute binary representation of product,
@@ -116,7 +117,7 @@ reduce
   :: (Ord n, Enum n, Num n)
   => n -> M.Map n (Q.Seq Bit) -> [Bit]
 reduce w m = case M.minViewWithKey m of
-  Nothing -> [false]
+  Nothing -> []
   Just ((k,s), m') ->
     if k < w
     then
