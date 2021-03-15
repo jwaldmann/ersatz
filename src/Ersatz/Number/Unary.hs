@@ -4,7 +4,8 @@ module Ersatz.Number.Unary where
 
 import Prelude hiding (and,or,not,(||),(&&),any,all)
 import Ersatz.Bit
-import Ersatz.Bits (Bits(..),FromBit(..))
+import Ersatz.Bits (Bits(..))
+import Ersatz.Number.Class
 import Ersatz.Codec
 import Ersatz.Equatable
 import Ersatz.Orderable
@@ -14,18 +15,24 @@ import Data.Proxy
 import Data.Reflection
 import Data.List (genericLength)
 import Control.Monad (replicateM)
+import qualified Data.Map as M
+
+import Debug.Trace
 
 -- | Numbers with bounded bit width and overflow detection.
 -- Implementation uses order encoding.
 -- contents x !! k  <==> value-of x >= k.
 -- For @w=3@, encodings are
 -- 0 => U [1,0,0] 0, 1 => U [1,1,0] 0, 2 => U [1,1,1] 0,
--- 3 and more => U [1,1,1] 1
+-- 3 and more => U [1,1,1] 1.
+-- @Unary w@ can represent numbers 0 .. w-1 exactly.
 data Unary (w :: Nat) =
   Unary { contents :: ![Bit]
         -- ^ will have length  w, first bit is constant true
        , overflow :: !Bit
        }
+
+contow x = contents x <> [ overflow x ]
 
 instance forall w . KnownNat w => Codec (Unary w) where
   type Decoded (Unary w) = Integer
@@ -61,17 +68,71 @@ instance Orderable (Unary w) where
 instance forall w . KnownNat w => FromBit (Unary w) where
   fromBit b =
     let w = fromIntegral $ natVal @w undefined
-        bs = take (w+1) $ true : b : repeat false
+        bs = true : b : repeat false
     in  Unary { contents = take w bs , overflow = bs !! w }
 
 instance forall w . KnownNat w => Num (Unary w) where
-  a + b =
+  fromInteger 0 = fromBit false
+  a + b = plus_flat @w [a,b]
+          -- plus_merge @w a b
+
+instance forall w . KnownNat w => Summ (Unary w) where
+  -- summ = plus_flat
+
+plus_merge 
+  :: forall w
+  . KnownNat w
+  => Unary w -> Unary w -> Unary w
+plus_merge x y =
+  let w = fromIntegral $ natVal @w undefined
+      xs = contow x ; ys = contow y
+      o = or $ zipWith (&&) xs $ reverse ys
+      bs = true : go (drop 1 xs) (drop 1 ys)
+  in  Unary { contents = take w bs, overflow = o }
+
+chop [] = ([],[])
+chop (x:xs) = let (ys,zs) = chop xs in (x:zs,ys)
+
+unchop [] [] = [] ; unchop [x] [] = [x]
+unchop (x:xs) (y:ys) = (x||y) : (x&&y) : unchop xs ys
+
+go [] [] = []
+go [x] [y] = unchop [x] [y]
+go xs ys | length xs >= 2, length ys >= 2 =
+  let -- ceil(x/2), floor (x/2)
+      (xe,xo) = chop xs
+      -- ceil(y/2), floor (y/2)
+      (ye,yo) = chop ys
+      -- 1 : (ceil(x/2)+ceil(y/2)-1)
+      e:es = go xe ye
+      -- floor(x/2)+floor(y/2)
+      os = go xo yo
+  in  -- 1 + (ceil(x/2)+ceil(y/2)-1) + floor(x/2)+floor(y/2)
+      -- = 1 + x + y - 1
+      e : unchop os es
+go xs ys =
+  error $ unwords [ "go", show (length xs),show (length ys)]
+
+plus_flat
+  :: forall w
+  . KnownNat w
+  => [Unary w] -> Unary w
+plus_flat xs =  
     let w = fromIntegral $ natVal @w undefined
         get x i = if i < w then contents x !! i else overflow x
         cs = do
-          k <- [0 .. w]
+          s <- [0 .. w]
           return $ or $ do
-            i <- [0 .. k]
-            return $ get a i && get b (k-i)
+            ks <- decomp s $ length xs
+            return $ and $ do
+              (k,x) <- zip ks xs
+              return $ get x k
     in  Unary (take w cs) (cs !! w)
 
+-- | represent w as sum of exactly  n  non-negative numbers
+decomp :: Int -> Int -> [[Int]]
+decomp w 1 = return [w]
+decomp 0 n = return $ replicate n 0
+decomp w n = do
+  k <- [0 .. w]
+  (k:) <$> decomp (w-k) (n-1)

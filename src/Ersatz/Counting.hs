@@ -19,6 +19,7 @@ module Ersatz.Counting where
 import Prelude hiding (and,or,not,(||),(&&))
 import Ersatz.Bit
 import Ersatz.Bits
+import Ersatz.Number.Class
 import qualified Ersatz.Number.Binary as B
 import qualified Ersatz.Number.Unary as U
 import Ersatz.Codec
@@ -36,6 +37,7 @@ import Control.Monad (replicateM)
 import Text.Printf
 import qualified Data.IntSet as I
 
+-- use_unary _ _ = False
 use_unary k n =  k == 1
            || k == 2 && n < 438
            || k == 3 && n < 71
@@ -118,21 +120,16 @@ geqSumBitsU x bs =
       $ \ ( _ :: KnownNat w => Proxy w) ->
           encode x >=? count @(U.Unary w) bs
 
+count :: (FromBit n, Summ n) => [Bit] -> n
+count bs = summ_cut 2 $ map fromBit bs
 
-
-count :: (FromBit n, Num n) => [Bit] -> n
-count [] = fromBit false
-count [b] = fromBit b
-count bs =
-  let (pre, post) = splitAt (div (length bs) 2) bs
-  in  count pre + count post
 
 ------------------------------------------------------------
 
 test =
   -- table
   runSAT'  $ do
-    xs <- replicateM 4 exists
+    xs <- replicateM 10 exists
     assert $ atmost 2 xs
     return xs
 

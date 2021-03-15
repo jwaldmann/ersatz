@@ -4,7 +4,8 @@ module Ersatz.Number.Binary where
 
 import Prelude hiding (and,or,not,(||),(&&))
 import Ersatz.Bit
-import Ersatz.Bits (Bits(..),FromBit(..))
+import Ersatz.Bits (Bits(..))
+import Ersatz.Number.Class
 import Ersatz.Codec
 import Ersatz.Equatable
 import Ersatz.Orderable
@@ -65,7 +66,10 @@ fromBits (Bits bs) =
            , overflow = or large
            }
 
+instance forall w . KnownNat w => Summ (Binary w)
+
 instance forall w . KnownNat w => Num (Binary w) where
+  fromInteger 0 = fromBit false
   a + b =
     let w = fromIntegral $ natVal @w undefined
     in  if w == 1

@@ -56,7 +56,7 @@ minisatPath :: MonadIO m => FilePath -> Solver SAT m
 minisatPath path problem = liftIO $
   withTempFiles ".cnf" "" $ \problemPath solutionPath -> do
     withFile problemPath WriteMode $ \fh -> do
-      when False $ do
+      when True $ do
         hPutStrLn stderr $ ("Tseitin map: " <>) $
           show $ M.toList $ M.fromListWith (+) $ do
             (pol,_) <- toList $ problem ^. stableMap
