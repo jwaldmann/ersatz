@@ -1,4 +1,4 @@
-{-# language KindSignatures, DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes, LambdaCase, TypeFamilies #-}
+{-# language DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes, LambdaCase, TypeFamilies #-}
 
 module Ersatz.Number.Binary where
 
@@ -44,7 +44,7 @@ instance KnownNat w => Codec (Binary w) where
 instance KnownNat w => Variable (Binary w) where
   literally lit =
     let w = fromIntegral $ natVal @w undefined
-    in  Binary <$> (replicateM w exists) <*> pure false
+    in  Binary <$> replicateM w exists <*> pure false
 
 -- | @x /== y@ is not the negation of  @x === y@.
 -- an overflowed number is never equal
@@ -68,7 +68,7 @@ instance Orderable (Binary w) where
 instance forall w . KnownNat w => FromBit (Binary w) where
   fromBit b = fromBits (Bits [b])
 
-fromBits :: forall w . KnownNat w => Bits -> (Binary w) 
+fromBits :: forall w . KnownNat w => Bits -> Binary w 
 fromBits (Bits bs) =
     let w = fromIntegral $ natVal @w undefined
         (small, large) = splitAt w bs

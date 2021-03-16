@@ -6,13 +6,14 @@ compare the number of true bits in @bs@ with a constant @k@
 first argument @k@ can be negative,
 or larger than @length bs@.
 
-Implementation: binary summation, using a balanced tree,
-with intermediate results using the bit width required for @k@
+Implementation: summation, using a balanced tree.
+Intermediate results use the bit width required for @k@,
 and an overflow indicator bit.
+Intermediate results are represented in unary for small @k@, else binary.
 
 -}
 
-{-# language KindSignatures, DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes, LambdaCase, TypeFamilies, AllowAmbiguousTypes, QuantifiedConstraints #-}
+{-# language DataKinds, TypeApplications, ScopedTypeVariables, RankNTypes, TypeFamilies, AllowAmbiguousTypes #-}
 
 module Ersatz.Counting where
 
@@ -37,6 +38,8 @@ import Control.Monad (replicateM)
 import Text.Printf
 import qualified Data.IntSet as I
 
+-- FIXME explain these numbers, and verify their explanation.
+-- I think I compared the literal-size of the CNFs, see cnfsize below.
 -- use_unary _ _ = False
 use_unary k n =  k == 1
            || k == 2 && n < 438
