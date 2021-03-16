@@ -99,7 +99,7 @@ instance forall w . KnownNat w => Num (Binary w) where
     let w = fromIntegral $ natVal @w undefined
         c = multiply w (contents a) (contents b)
         o = if length c <= w then false else c !! w
-        iszero x = all not $ contents x
+        iszero x = all not $ overflow x : contents x
     in  Binary { contents = take w c
                , overflow = not (iszero a && iszero b)
                      &&  ( overflow a || overflow b || o )
