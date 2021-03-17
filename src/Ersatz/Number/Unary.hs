@@ -32,7 +32,7 @@ data Unary (w :: Nat) =
        , overflow :: !Bit
        }
 
-contow x = contents x <> [ overflow x ]
+contow x = mappend (contents x) [ overflow x ]
 
 instance forall w . KnownNat w => Codec (Unary w) where
   type Decoded (Unary w) = Integer
