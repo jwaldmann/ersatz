@@ -152,5 +152,5 @@ cnfsize f k n =
         assert $ f k xs
   in  -- dimacsNumVariables s - n
     -- length $ dimacsClauses s
-    sum $ fmap I.size $ dimacsClauses s
+    sum $  I.size <$> dimacsClauses s
     

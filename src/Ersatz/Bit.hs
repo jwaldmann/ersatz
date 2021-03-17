@@ -182,7 +182,7 @@ assert b = do
 
 -- | Convert a 'Bit' to an equivalent 'Literal'.
 runBit :: MonadSAT s m => Bit -> m Literal
-runBit b = runBitPol Both b
+runBit = runBitPol Both
 
 -- | Convert a 'Bit' b to a literal l (and emit clauses)
 -- if polarity is Positive, then l implies b.
@@ -194,7 +194,7 @@ runBitPol _ (Var l) = return l
 runBitPol p (Run action) = action >>= runBitPol p
 runBitPol p b = generateLiteral p b $ \ need out -> case b of
     And bs    -> do
-      assertFormula =<< formulaAndPol need out `fmap` mapM (runBitPol need) (toList bs)
+      assertFormula . formulaAndPol need out =<< mapM (runBitPol need) (toList bs)
       return need
     -- polarity does not help for Xor:  
     Xor x y   -> do
