@@ -172,9 +172,9 @@ assert (Not (And bs)) = do
 assert (Xor b1 b2) = do
   l1 <- runBit b1 ; l2 <- runBit b2
   assertFormula $ fromClause
-    $ fromLiteral l1 <> fromLiteral l2
+    $ fromLiteral l1 ++ fromLiteral l2
   assertFormula $ fromClause
-    $ fromLiteral (negateLiteral l1) <> fromLiteral (negateLiteral l2)
+    $ fromLiteral (negateLiteral l1) ++ fromLiteral (negateLiteral l2)
 assert (Not (Xor b1 b2)) = assert (Xor b1 (Not b2))
 assert b = do
   l <- runBitPol Positive b
